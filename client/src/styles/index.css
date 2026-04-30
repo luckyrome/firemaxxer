@@ -1,0 +1,375 @@
+/* ── Theme variables ─────────────────────────────────────────────────────────── */
+
+:root {
+  --bg:            #0d1117;
+  --bg-surface:    #161b22;
+  --bg-inset:      #010409;
+  --bg-overlay:    #21262d;
+  --border:        #21262d;
+  --border-sub:    #30363d;
+
+  --fg:            #f0f6fc;
+  --fg-body:       #e6edf3;
+  --fg-sec:        #c9d1d9;
+  --fg-muted:      #8b949e;
+  --fg-subtle:     #6e7681;
+  --fg-dim:        #484f58;
+
+  --blue:          #58a6ff;
+  --green:         #3fb950;
+  --green-btn:     #238636;
+  --green-border:  #2ea043;
+  --yellow:        #e3b341;
+  --red:           #f85149;
+  --red-bg:        #3d0f12;
+  --red-border:    #b91c1c;
+  --red-border-h:  #c93c40;
+  --red-text:      #fca5a5;
+  --success-bg:    #0f2d1a;
+  --success-text:  #86efac;
+
+  --dialog-scrim:  rgba(0,0,0,0.6);
+  --shadow-menu:   0 8px 24px rgba(0,0,0,0.5);
+  --shadow-dialog: 0 16px 48px rgba(0,0,0,0.6);
+
+  --sidebar-width: 220px;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--fg-sec);
+  min-height: 100vh;
+}
+
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Loading ─────────────────────────────────────────────────────────────────── */
+
+.loading {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--fg-subtle);
+  font-size: 0.9rem;
+}
+
+/* ── App shell ───────────────────────────────────────────────────────────────── */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+}
+
+.sidebar-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-nav {
+  list-style: none;
+  padding: 10px 0;
+  flex: 1;
+}
+
+.sidebar-nav li a {
+  display: block;
+  padding: 8px 18px;
+  font-size: 0.86rem;
+  color: var(--fg-muted);
+  text-decoration: none;
+  border-radius: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.sidebar-nav li a:hover {
+  color: var(--fg);
+  background: var(--bg-overlay);
+}
+
+.sidebar-nav li a.active {
+  color: var(--fg);
+  background: var(--bg-overlay);
+  border-left: 2px solid var(--blue);
+  padding-left: 16px;
+}
+
+.sidebar-footer {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-email {
+  font-size: 0.75rem;
+  color: var(--fg-subtle);
+  word-break: break-all;
+}
+
+.main-content {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  padding: 28px 32px;
+  min-width: 0;
+}
+
+/* ── Page ────────────────────────────────────────────────────────────────────── */
+
+.page h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+
+.muted { color: var(--fg-subtle); font-size: 0.85rem; }
+
+/* ── Auth ────────────────────────────────────────────────────────────────────── */
+
+.auth-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 40px 20px;
+  background: var(--bg);
+}
+
+.auth-logo {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.02em;
+  margin-bottom: 32px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 24px;
+}
+
+.auth-form h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 4px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+.auth-form input {
+  background: var(--bg);
+  border: 1px solid var(--border-sub);
+  border-radius: 8px;
+  color: var(--fg-body);
+  font-size: 0.95rem;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.auth-form input:focus { border-color: var(--blue); }
+
+.auth-btn {
+  background: var(--green-btn);
+  border: 1px solid var(--green-border);
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 10px;
+  transition: background 0.15s;
+}
+.auth-btn:hover:not(:disabled) { background: var(--green-border); }
+.auth-btn:disabled { opacity: 0.5; cursor: default; }
+
+.auth-error {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  border-radius: 6px;
+  color: var(--red-text);
+  font-size: 0.83rem;
+  padding: 8px 12px;
+}
+
+.auth-switch {
+  font-size: 0.82rem;
+  color: var(--fg-subtle);
+  text-align: center;
+}
+
+.auth-link {
+  background: none;
+  border: none;
+  color: var(--blue);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.auth-hint {
+  color: var(--fg-subtle);
+  font-size: 0.8rem;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+
+.btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-sub);
+  border-radius: 6px;
+  color: var(--fg-sec);
+  cursor: pointer;
+  font-size: 0.83rem;
+  font-weight: 500;
+  padding: 7px 14px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn:hover { border-color: var(--blue); color: var(--fg); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.btn-primary {
+  background: var(--green-btn);
+  border-color: var(--green-border);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) { background: var(--green-border); border-color: var(--green-border); color: #fff; }
+
+.btn-danger {
+  color: var(--red);
+  border-color: var(--red-border);
+}
+.btn-danger:hover:not(:disabled) { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+
+/* ── Dialog ──────────────────────────────────────────────────────────────────── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--dialog-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+
+.dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-sub);
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 400px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-dialog);
+}
+
+.dialog-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.dialog-body {
+  font-size: 0.83rem;
+  color: var(--fg-muted);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* ── Form fields ─────────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+}
+
+.field input,
+.field select,
+.field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border-sub);
+  border-radius: 6px;
+  color: var(--fg-body);
+  font-size: 0.88rem;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus { border-color: var(--blue); }
+
+.field-error {
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  border-radius: 6px;
+  color: var(--red-text);
+  font-size: 0.8rem;
+  padding: 6px 10px;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────────── */
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--fg-subtle);
+  font-size: 0.85rem;
+}
+.empty-state p { margin-bottom: 10px; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 680px) {
+  .sidebar { display: none; }
+  .main-content { margin-left: 0; padding: 16px; }
+}
