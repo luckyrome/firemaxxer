@@ -27,6 +27,41 @@ function balanceAfterK(principal: number, annualRate: number, termMonths: number
   return principal * Math.pow(1 + r, k) - pmt * ((Math.pow(1 + r, k) - 1) / r);
 }
 
+export type SnapshotInterval = 'monthly' | 'quarterly' | 'annually';
+
+export interface GeneratedSnapshot {
+  snapshot_date: string;
+  balance: number;
+}
+
+// Generate amortization-derived balance snapshots from origination through today
+export function generateAmortizationSnapshots(
+  originalBalance: number,
+  annualRate: number,
+  termMonths: number,
+  originationDate: string,
+  interval: SnapshotInterval,
+): GeneratedSnapshot[] {
+  const step = interval === 'monthly' ? 1 : interval === 'quarterly' ? 3 : 12;
+  const orig = new Date(originationDate + 'T00:00:00');
+  const today = new Date();
+  const snapshots: GeneratedSnapshot[] = [];
+
+  for (let k = 0; k <= termMonths; k += step) {
+    const d = new Date(orig);
+    d.setMonth(d.getMonth() + k);
+    if (d > today) break;
+
+    const balance = Math.max(0, balanceAfterK(originalBalance, annualRate, termMonths, k));
+    snapshots.push({
+      snapshot_date: d.toISOString().slice(0, 10),
+      balance: Math.round(balance * 100) / 100,
+    });
+  }
+
+  return snapshots;
+}
+
 export function computeLoanDetails(
   originalBalance: number,
   annualRate: number,

@@ -162,6 +162,7 @@ function ItemModal({
 function SnapshotDetail({ snapshot }: { snapshot: ExpenseSnapshot }) {
   const qc = useQueryClient();
   const [itemModal, setItemModal] = useState<'new' | ExpenseItem | null>(null);
+  const [criticalOnly, setCriticalOnly] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['expense-items', snapshot.id],
@@ -178,7 +179,18 @@ function SnapshotDetail({ snapshot }: { snapshot: ExpenseSnapshot }) {
     setItemModal(null);
   }
 
-  const items = data?.items ?? [];
+  const allItems = data?.items ?? [];
+  const visibleItems = criticalOnly ? allItems.filter(i => i.critical) : allItems;
+
+  // Group by category, sorted by category total desc
+  const grouped = visibleItems.reduce<Record<string, typeof visibleItems>>((acc, i) => {
+    (acc[i.category] ??= []).push(i);
+    return acc;
+  }, {});
+  const categories = Object.entries(grouped).sort(
+    ([, a], [, b]) =>
+      b.reduce((s, i) => s + i.monthly_cost, 0) - a.reduce((s, i) => s + i.monthly_cost, 0),
+  );
 
   return (
     <div>
@@ -196,43 +208,77 @@ function SnapshotDetail({ snapshot }: { snapshot: ExpenseSnapshot }) {
             <div className="summary-card-label">Critical / Month</div>
             <div className="summary-card-value red">{fmtMoney(data.criticalMonthly)}</div>
           </div>
+          <div className="summary-card">
+            <div className="summary-card-label">Discretionary / Month</div>
+            <div className="summary-card-value">{fmtMoney(data.totalMonthly - data.criticalMonthly)}</div>
+          </div>
         </div>
       )}
 
       <div className="section-header">
         <h2>Items</h2>
-        <button className="btn btn-primary" onClick={() => setItemModal('new')}>+ Add Item</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className={`btn${criticalOnly ? ' btn-primary' : ''}`}
+            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+            onClick={() => setCriticalOnly(v => !v)}
+          >
+            {criticalOnly ? '★ Critical only' : '☆ All items'}
+          </button>
+          <button className="btn btn-primary" onClick={() => setItemModal('new')}>+ Add Item</button>
+        </div>
       </div>
 
-      {isLoading ? <p className="muted">Loading…</p> : items.length === 0 ? (
+      {isLoading ? <p className="muted">Loading…</p> : allItems.length === 0 ? (
         <div className="empty-state"><p>No items yet.</p></div>
+      ) : visibleItems.length === 0 ? (
+        <div className="empty-state"><p>No critical items in this snapshot.</p></div>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th><th>Category</th><th>Owner</th><th>Freq</th>
-              <th>Amount</th><th>Monthly</th><th>Critical</th><th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map(i => (
-              <tr key={i.id}>
-                <td>{i.name}</td>
-                <td><span className="type-badge">{i.category}</span></td>
-                <td className="muted">{i.owner ?? '—'}</td>
-                <td><span className="type-badge">{FREQ_LABELS[i.frequency]}</span></td>
-                <td className="num">{fmtMoney(parseFloat(i.amount))}</td>
-                <td className="num">{fmtMoney(i.monthly_cost)}</td>
-                <td>{i.critical ? <span className="tag red">Critical</span> : null}</td>
-                <td className="actions-cell">
-                  <button className="btn" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => setItemModal(i)}>Edit</button>
-                  <button className="btn btn-danger" style={{ fontSize: '0.75rem', padding: '3px 10px' }}
-                    onClick={() => { if (confirm(`Delete "${i.name}"?`)) deleteMut.mutate(i.id); }}>Del</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        categories.map(([category, items]) => {
+          const catTotal = items.reduce((s, i) => s + i.monthly_cost, 0);
+          return (
+            <div key={category} style={{ marginBottom: 16 }}>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '5px 10px', background: 'var(--bg-overlay)',
+                borderRadius: '6px 6px 0 0', borderBottom: '1px solid var(--border)',
+              }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-sec)' }}>{category}</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--fg-muted)' }}>{fmtMoney(catTotal)}/mo</span>
+              </div>
+              <table className="data-table" style={{ marginBottom: 0 }}>
+                <thead>
+                  <tr>
+                    <th>Name</th><th>Owner</th><th>Freq</th>
+                    <th>Amount</th><th>Monthly</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items
+                    .slice()
+                    .sort((a, b) => b.monthly_cost - a.monthly_cost)
+                    .map(i => (
+                      <tr key={i.id}>
+                        <td>
+                          {i.critical && <span className="tag red" style={{ marginRight: 6 }}>★</span>}
+                          {i.name}
+                        </td>
+                        <td className="muted">{i.owner ?? '—'}</td>
+                        <td><span className="type-badge">{FREQ_LABELS[i.frequency]}</span></td>
+                        <td className="num">{fmtMoney(parseFloat(i.amount))}</td>
+                        <td className="num">{fmtMoney(i.monthly_cost)}</td>
+                        <td className="actions-cell">
+                          <button className="btn" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => setItemModal(i)}>Edit</button>
+                          <button className="btn btn-danger" style={{ fontSize: '0.75rem', padding: '3px 10px' }}
+                            onClick={() => { if (confirm(`Delete "${i.name}"?`)) deleteMut.mutate(i.id); }}>Del</button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })
       )}
 
       {itemModal && (

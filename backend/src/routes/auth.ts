@@ -300,6 +300,30 @@ router.post('/reset-password', authLimiter, async (req, res, next) => {
   }
 });
 
+// POST /api/auth/change-password
+const changePasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(8),
+});
+
+router.post('/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const account = req.account!;
+
+    const valid = await bcrypt.compare(currentPassword, account.password_hash);
+    if (!valid) throw new ForbiddenError('Current password is incorrect');
+
+    const hash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await updatePasswordHash(account.id, hash);
+    await setPasswordChangedAt(account.id);
+
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/auth/me
 router.get('/me', requireAuth, (req, res) => {
   const { id, email, email_verified, is_admin } = req.account!;

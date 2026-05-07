@@ -6,7 +6,7 @@ import {
   getLiabilitySnapshots, addLiabilitySnapshot, deleteLiabilitySnapshot, bulkAddLiabilitySnapshots,
 } from '../../api/assets';
 import { parseSnapshotPaste } from '../../utils/parseSnapshots';
-import { computeLoanDetails } from '../../utils/loanMath';
+import { computeLoanDetails, generateAmortizationSnapshots, type SnapshotInterval } from '../../utils/loanMath';
 import type { AssetSnapshot, LiabilitySnapshot, LiabilityWithLatest } from '../../types';
 
 function fmtMoney(v: string | number) {
@@ -311,6 +311,114 @@ export function AssetSnapshotPanel({ assetId }: { assetId: string }) {
   );
 }
 
+// ── Generate from loan math ───────────────────────────────────────────────────
+
+function GenerateFromLoan({
+  liability,
+  hasSnapshots,
+  onGenerated,
+}: {
+  liability: LiabilityWithLatest;
+  hasSnapshots: boolean;
+  onGenerated: () => void;
+}) {
+  const { origination_date, original_balance, term_months, interest_rate } = liability;
+  if (!origination_date || !original_balance || !term_months) return null;
+
+  const [interval, setInterval] = useState<SnapshotInterval>('monthly');
+  const [generating, setGenerating] = useState(false);
+  const [open, setOpen] = useState(!hasSnapshots); // auto-open when no snapshots
+
+  const preview = generateAmortizationSnapshots(
+    parseFloat(original_balance),
+    parseFloat(interest_rate),
+    term_months,
+    origination_date,
+    interval,
+  );
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      await bulkAddLiabilitySnapshots(liability.id, preview);
+      onGenerated();
+      setOpen(false);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        className="btn"
+        style={{ fontSize: '0.75rem', padding: '4px 10px', marginTop: 10 }}
+        onClick={() => setOpen(true)}
+      >
+        ∫ Generate from loan math
+      </button>
+    );
+  }
+
+  const first = preview[0]?.snapshot_date;
+  const last  = preview[preview.length - 1]?.snapshot_date;
+
+  return (
+    <div style={{
+      marginTop: 12, padding: '12px 14px',
+      background: 'var(--bg-inset)', borderRadius: 8,
+      border: '1px solid var(--border)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: '0.82rem', color: 'var(--fg-muted)', fontWeight: 600 }}>
+          Generate balance history from amortization
+        </span>
+        {hasSnapshots && (
+          <button className="icon-btn" onClick={() => setOpen(false)}>×</button>
+        )}
+      </div>
+      <p style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)', marginBottom: 10 }}>
+        Calculates the exact amortized balance at each interval and imports it as snapshots.
+        Existing snapshots for the same dates will be overwritten.
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: '0.78rem', color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          Interval
+          <select
+            value={interval}
+            onChange={e => setInterval(e.target.value as SnapshotInterval)}
+            style={{
+              background: 'var(--bg)', border: '1px solid var(--border-sub)',
+              borderRadius: 6, color: 'var(--fg-body)', fontSize: '0.8rem',
+              padding: '4px 8px', outline: 'none',
+            }}
+          >
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="annually">Annually</option>
+          </select>
+        </label>
+
+        {preview.length > 0 && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
+            {preview.length} snapshots · {first} → {last}
+          </span>
+        )}
+
+        <button
+          className="btn btn-primary"
+          style={{ fontSize: '0.75rem', padding: '4px 12px' }}
+          onClick={handleGenerate}
+          disabled={generating || preview.length === 0}
+        >
+          {generating ? 'Generating…' : `Import ${preview.length} snapshots`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Liability panel ───────────────────────────────────────────────────────────
 
 export function LiabilitySnapshotPanel({ liability }: { liability: LiabilityWithLatest }) {
@@ -342,6 +450,8 @@ export function LiabilitySnapshotPanel({ liability }: { liability: LiabilityWith
     invalidate();
   }
 
+  const hasSnapshots = !isLoading && (snapshots as LiabilitySnapshot[]).length > 0;
+
   return (
     <div className="snapshot-panel">
       <LoanDetailsCard liability={liability} />
@@ -364,6 +474,7 @@ export function LiabilitySnapshotPanel({ liability }: { liability: LiabilityWith
       )}
       <AddRow valueLabel="Balance" onAdd={handleAdd} />
       <PasteImporter valueLabel="Balance" onImport={handleBulk} />
+      <GenerateFromLoan liability={liability} hasSnapshots={hasSnapshots} onGenerated={invalidate} />
     </div>
   );
 }
