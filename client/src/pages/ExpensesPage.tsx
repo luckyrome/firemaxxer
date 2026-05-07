@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getExpenseSnapshots, createExpenseSnapshot, updateExpenseSnapshot,
   deleteExpenseSnapshot, cloneExpenseSnapshot, getExpenseItems,
-  createExpenseItem, updateExpenseItem, deleteExpenseItem,
+  createExpenseItem, updateExpenseItem, deleteExpenseItem, bulkAddExpenseItems,
 } from '../api/expenses';
 import type { ExpenseSnapshot, ExpenseItem, ExpenseFrequency } from '../types';
 
@@ -79,6 +79,201 @@ const EMPTY_ITEM: ItemForm = {
   critical: false, amount: '', frequency: 'monthly',
 };
 
+// ── Expense paste parser ───────────────────────────────────────────────────────
+
+interface ParsedExpenseRow {
+  name: string;
+  category: string;
+  amount: number;
+  frequency: ExpenseFrequency;
+  owner: string | null;
+  vertical: string | null;
+  critical: boolean;
+}
+
+const FREQ_ALIASES: Record<string, ExpenseFrequency> = {
+  weekly: 'weekly', week: 'weekly',
+  biweekly: 'bi_weekly', 'bi-weekly': 'bi_weekly', 'bi weekly': 'bi_weekly', bi_weekly: 'bi_weekly',
+  monthly: 'monthly', month: 'monthly',
+  quarterly: 'quarterly', quarter: 'quarterly',
+  'semi-annually': 'semi_annually', 'semi annually': 'semi_annually',
+  semiannually: 'semi_annually', semi_annually: 'semi_annually', 'semi-annual': 'semi_annually',
+  annually: 'annually', annual: 'annually', yearly: 'annually', year: 'annually',
+};
+
+function normalizeFreq(raw: string): ExpenseFrequency | null {
+  return FREQ_ALIASES[raw.toLowerCase().trim()] ?? null;
+}
+
+function parseCritical(raw: string): boolean {
+  const v = raw.toLowerCase().trim();
+  return v === 'yes' || v === 'true' || v === '1' || v === '★' || v === 'x' || v === 'y';
+}
+
+function parseAmount(raw: string): number {
+  const s = raw.trim();
+  // Accounting notation: $(309) or (309) → negative
+  const accounting = s.match(/^\$?\(([0-9.,]+)\)$/);
+  if (accounting) return -parseFloat(accounting[1].replace(/,/g, ''));
+  return parseFloat(s.replace(/[$,]/g, ''));
+}
+
+function parseExpenseItemsPaste(text: string): { rows: ParsedExpenseRow[]; errors: string[] } {
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+  if (!lines.length) return { rows: [], errors: ['No data found'] };
+
+  const sep = (lines[0].match(/\t/g) ?? []).length >= (lines[0].match(/,/g) ?? []).length ? '\t' : ',';
+
+  const splitLine = (l: string) => sep === '\t'
+    ? l.split('\t')
+    : l.split(',').map(c => c.replace(/^"|"$/g, '').replace(/""/g, '"'));
+
+  const headers = splitLine(lines[0]).map(h => h.toLowerCase().trim());
+  const hasHeader = headers.includes('name') || headers.includes('category');
+
+  const COL_KEYS = ['name', 'category', 'amount', 'frequency', 'owner', 'vertical', 'critical'];
+  let colMap: Record<string, number>;
+  let dataLines: string[];
+
+  if (hasHeader) {
+    colMap = Object.fromEntries(COL_KEYS.map(k => [k, headers.indexOf(k)]));
+    dataLines = lines.slice(1);
+  } else {
+    colMap = { name: 0, category: 1, amount: 2, frequency: 3, owner: 4, vertical: 5, critical: 6 };
+    dataLines = lines;
+  }
+
+  const rows: ParsedExpenseRow[] = [];
+  const errors: string[] = [];
+
+  dataLines.forEach((line, idx) => {
+    const rowNum = hasHeader ? idx + 2 : idx + 1;
+    const cols = splitLine(line);
+    const get = (key: string) => {
+      const i = colMap[key];
+      return i >= 0 && i < cols.length ? cols[i].trim() : '';
+    };
+
+    const name = get('name');
+    const category = get('category') || 'General';
+    const amountRaw = get('amount');
+    const freqRaw = get('frequency');
+
+    if (!name) { errors.push(`Row ${rowNum}: missing name`); return; }
+    if (!amountRaw) { errors.push(`Row ${rowNum}: missing amount`); return; }
+
+    const amount = parseAmount(amountRaw);
+    if (isNaN(amount)) { errors.push(`Row ${rowNum}: invalid amount "${amountRaw}"`); return; }
+
+    const frequency = freqRaw ? normalizeFreq(freqRaw) : 'monthly';
+    if (!frequency) { errors.push(`Row ${rowNum}: unknown frequency "${freqRaw}"`); return; }
+
+    const owner = get('owner') || null;
+    const vertical = get('vertical') || null;
+    const criticalRaw = get('critical');
+    const critical = criticalRaw ? parseCritical(criticalRaw) : false;
+
+    rows.push({ name, category, amount, frequency, owner, vertical, critical });
+  });
+
+  return { rows, errors };
+}
+
+function ExpenseImporter({ snapshotId, onImported }: { snapshotId: string; onImported: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [parsed, setParsed] = useState<{ rows: ParsedExpenseRow[]; errors: string[] } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState('');
+
+  function handleParse() {
+    setParsed(parseExpenseItemsPaste(text));
+    setResult('');
+  }
+
+  async function handleImport() {
+    if (!parsed || parsed.rows.length === 0) return;
+    setImporting(true);
+    try {
+      const res = await bulkAddExpenseItems(snapshotId, parsed.rows);
+      setResult(`Imported ${res.inserted} items.`);
+      setParsed(null);
+      setText('');
+      onImported();
+    } catch (e: any) {
+      setResult(`Error: ${e.message}`);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="btn" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={() => setOpen(true)}>
+        Import from CSV
+      </button>
+    );
+  }
+
+  return (
+    <div className="section-card" style={{ marginTop: 12 }}>
+      <div className="section-header">
+        <h3 style={{ margin: 0, fontSize: '0.9rem' }}>Import Expense Items</h3>
+        <button className="btn" style={{ fontSize: '0.72rem', padding: '3px 8px' }} onClick={() => { setOpen(false); setParsed(null); setText(''); setResult(''); }}>Close</button>
+      </div>
+      <p className="muted" style={{ fontSize: '0.75rem', margin: '6px 0 8px' }}>
+        Paste tab-separated or CSV data. Columns: <strong>name, category, amount, frequency</strong>, owner, vertical, critical (optional). A header row is detected automatically.
+      </p>
+      <textarea
+        style={{ width: '100%', height: 140, fontFamily: 'monospace', fontSize: '0.75rem', boxSizing: 'border-box', padding: 8, resize: 'vertical' }}
+        value={text}
+        onChange={e => { setText(e.target.value); setParsed(null); setResult(''); }}
+        placeholder={"name\tcategory\tamount\tfrequency\nRent\tHousing\t2500\tmonthly\nGroceries\tFood\t600\tmonthly"}
+      />
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="btn btn-primary" onClick={handleParse} disabled={!text.trim()}>Parse</button>
+        {parsed && parsed.rows.length > 0 && (
+          <button className="btn btn-primary" onClick={handleImport} disabled={importing}>
+            {importing ? 'Importing…' : `Import ${parsed.rows.length} items`}
+          </button>
+        )}
+      </div>
+      {result && <p style={{ marginTop: 8, fontSize: '0.8rem', color: result.startsWith('Error') ? 'var(--red)' : 'var(--green)' }}>{result}</p>}
+      {parsed && (
+        <div style={{ marginTop: 10 }}>
+          {parsed.errors.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              {parsed.errors.map((e, i) => <div key={i} style={{ fontSize: '0.75rem', color: 'var(--red)' }}>{e}</div>)}
+            </div>
+          )}
+          {parsed.rows.length > 0 && (
+            <table className="data-table" style={{ fontSize: '0.75rem' }}>
+              <thead>
+                <tr><th>Name</th><th>Category</th><th>Amount</th><th>Freq</th><th>Owner</th><th>Critical</th></tr>
+              </thead>
+              <tbody>
+                {parsed.rows.slice(0, 10).map((r, i) => (
+                  <tr key={i}>
+                    <td>{r.name}</td>
+                    <td>{r.category}</td>
+                    <td className="num">{fmtMoney(r.amount)}</td>
+                    <td>{FREQ_LABELS[r.frequency]}</td>
+                    <td className="muted">{r.owner ?? '—'}</td>
+                    <td>{r.critical ? '★' : '—'}</td>
+                  </tr>
+                ))}
+                {parsed.rows.length > 10 && (
+                  <tr><td colSpan={6} className="muted" style={{ textAlign: 'center' }}>…and {parsed.rows.length - 10} more</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ItemModal({
   snapshotId, existing, onClose, onSave,
 }: { snapshotId: string; existing?: ExpenseItem; onClose: () => void; onSave: () => void }) {
@@ -95,7 +290,7 @@ function ItemModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const amount = parseFloat(form.amount);
-    if (isNaN(amount) || amount < 0) { setError('Amount must be valid'); return; }
+    if (isNaN(amount)) { setError('Amount must be a valid number'); return; }
     setSaving(true);
     try {
       const payload = {
@@ -225,6 +420,7 @@ function SnapshotDetail({ snapshot }: { snapshot: ExpenseSnapshot }) {
           >
             {criticalOnly ? '★ Critical only' : '☆ All items'}
           </button>
+          <ExpenseImporter snapshotId={snapshot.id} onImported={() => qc.invalidateQueries({ queryKey: ['expense-items', snapshot.id] })} />
           <button className="btn btn-primary" onClick={() => setItemModal('new')}>+ Add Item</button>
         </div>
       </div>

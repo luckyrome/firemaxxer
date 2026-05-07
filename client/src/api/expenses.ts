@@ -51,3 +51,13 @@ export function updateExpenseItem(itemId: string, data: {
 export function deleteExpenseItem(itemId: string): Promise<void> {
   return apiFetch(`/api/expenses/items/${itemId}`, { method: 'DELETE' });
 }
+
+export function bulkAddExpenseItems(snapshotId: string, rows: {
+  name: string; category: string; amount: number; frequency: string;
+  owner?: string | null; vertical?: string | null; critical?: boolean;
+}[]): Promise<{ inserted: number }> {
+  return apiFetch(`/api/expenses/snapshots/${snapshotId}/items/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ rows }),
+  });
+}

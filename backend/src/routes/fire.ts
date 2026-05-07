@@ -4,6 +4,7 @@ import { getSettings } from '../models/settings';
 import { listAssets } from '../models/asset';
 import { listLiabilities } from '../models/liability';
 import { findExpenseSnapshotById, listExpenseItems, itemMonthly } from '../models/expense';
+import { listIncomeSources, toMonthly } from '../models/income';
 import { computeFire } from '../services/fire';
 import { query } from '../config/db';
 
@@ -52,6 +53,21 @@ fireRouter.get('/result', async (req, res) => {
     monthlyRetiredExpenses = items.reduce((sum, i) => sum + itemMonthly(i), 0);
   }
 
-  const result = computeFire(config, existingAssets, monthlyActiveExpenses, monthlyRetiredExpenses);
+  // Income sources override
+  const sources = await listIncomeSources(accountId);
+  const activeSources = sources.filter(s => s.active);
+  let incomeOverride: { annualTaxable: number; annualNonTaxable: number } | undefined;
+  if (activeSources.length > 0) {
+    let annualTaxable = 0;
+    let annualNonTaxable = 0;
+    for (const s of activeSources) {
+      const monthly = toMonthly(parseFloat(s.amount), s.frequency);
+      if (s.taxable) annualTaxable += monthly * 12;
+      else annualNonTaxable += monthly * 12;
+    }
+    incomeOverride = { annualTaxable, annualNonTaxable };
+  }
+
+  const result = computeFire(config, existingAssets, monthlyActiveExpenses, monthlyRetiredExpenses, incomeOverride);
   res.json(result);
 });

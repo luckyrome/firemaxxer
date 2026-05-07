@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/requireAuth';
 import { NotFoundError } from '../middleware/errorHandler';
+import { query } from '../config/db';
 import {
   listExpenseSnapshots, findExpenseSnapshotById, createExpenseSnapshot,
   updateExpenseSnapshot, deleteExpenseSnapshot, cloneExpenseSnapshot,
@@ -24,7 +25,7 @@ const itemSchema = z.object({
   vertical:  z.string().max(80).nullable().optional(),
   category:  z.string().min(1).max(80),
   critical:  z.boolean(),
-  amount:    z.number().min(0),
+  amount:    z.number(),
   frequency: z.enum(['weekly', 'bi_weekly', 'monthly', 'quarterly', 'semi_annually', 'annually']),
 });
 
@@ -97,6 +98,24 @@ expensesRouter.post('/snapshots/:id/items', async (req, res) => {
     body.category, body.critical, body.amount, body.frequency,
   );
   res.status(201).json(item);
+});
+
+expensesRouter.post('/snapshots/:id/items/bulk', async (req, res) => {
+  const snap = await findExpenseSnapshotById(req.params.id, req.account!.id);
+  if (!snap) throw new NotFoundError('Snapshot not found');
+  const body = z.object({ rows: z.array(itemSchema).min(1).max(500) }).parse(req.body);
+
+  const values: unknown[] = [];
+  const placeholders = body.rows.map((r, i) => {
+    const b = i * 8;
+    values.push(snap.id, r.name, r.owner ?? null, r.vertical ?? null, r.category, r.critical, r.amount, r.frequency);
+    return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8})`;
+  });
+  await query(
+    `INSERT INTO expense_items (snapshot_id,name,owner,vertical,category,critical,amount,frequency) VALUES ${placeholders.join(',')}`,
+    values,
+  );
+  res.json({ inserted: body.rows.length });
 });
 
 expensesRouter.put('/items/:itemId', async (req, res) => {

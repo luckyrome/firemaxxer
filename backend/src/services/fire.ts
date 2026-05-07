@@ -30,6 +30,7 @@ export function computeFire(
   existingAssets: number,
   monthlyActiveExpenses: number,
   monthlyRetiredExpenses: number,
+  incomeOverride?: { annualTaxable: number; annualNonTaxable: number },
 ): FireResult {
   const {
     annualSalary, annualBonus, rsuQuarterlyGross, esppQuarterlyGain,
@@ -39,13 +40,20 @@ export function computeFire(
     ltCapGainsRate, safeWithdrawalRate, assumedGrowthRate, retirementAnnualIncome,
   } = config;
 
-  const annualRsuGross = rsuQuarterlyGross * 4;
-  const annualEsppGain = esppQuarterlyGain * 4;
+  let grossOrdinary: number;
+  let nonTaxableAnnual = 0;
 
-  // Gross income for tax purposes (ordinary income items)
-  const grossOrdinary = annualSalary + annualBonus + annualRsuGross - k401Annual - medicalDeductionAnnual;
+  if (incomeOverride) {
+    grossOrdinary = incomeOverride.annualTaxable - k401Annual - medicalDeductionAnnual;
+    nonTaxableAnnual = incomeOverride.annualNonTaxable;
+  } else {
+    const annualRsuGross = rsuQuarterlyGross * 4;
+    grossOrdinary = annualSalary + annualBonus + annualRsuGross - k401Annual - medicalDeductionAnnual;
+  }
+
+  const annualEsppGain = esppQuarterlyGain * 4;
   const grossCapGains = annualEsppGain;
-  const grossIncome = grossOrdinary + grossCapGains;
+  const grossIncome = grossOrdinary + grossCapGains + nonTaxableAnnual;
 
   // CA state tax on gross ordinary
   const caTotal = marginalTax(grossOrdinary, caStateTaxRate, caMaxPrevBracket, caMaxTaxPrevBracket);
