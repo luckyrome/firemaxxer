@@ -4,6 +4,10 @@ import { getFireResult } from '../api/refi';
 import { getSettings } from '../api/settings';
 import { getNetWorth } from '../api/assets';
 
+function fmtPct(r: number) {
+  return (r * 100).toFixed(1) + '%';
+}
+
 function fmtMoney(v: number) {
   return '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
@@ -38,9 +42,7 @@ export function DashboardPage() {
     queryFn: getNetWorth,
   });
 
-  const isConfigured = config && (
-    config.annualSalary > 0 || config.activeExpenseSnapshotId !== null
-  );
+  const isConfigured = config && config.activeExpenseSnapshotId !== null;
 
   if (resultLoading) return <div className="loading">Loading…</div>;
 
@@ -146,24 +148,40 @@ export function DashboardPage() {
       <div className="section-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
           <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--fg)' }}>Tax Summary</h2>
-          <Link to="/fire" style={{ fontSize: '0.78rem', color: 'var(--blue)' }}>Edit →</Link>
+          <Link to="/tax" style={{ fontSize: '0.78rem', color: 'var(--blue)' }}>Configure →</Link>
         </div>
-        <div className="stat-row">
-          <span className="stat-label">Gross Income</span>
-          <span className="stat-value">{fmtMoney(result.taxDetails.grossIncome)}</span>
-        </div>
-        <div className="stat-row">
-          <span className="stat-label">CA State Tax</span>
-          <span className="stat-value red">−{fmtMoney(result.taxDetails.caTotal)}</span>
-        </div>
-        <div className="stat-row">
-          <span className="stat-label">Federal Tax</span>
-          <span className="stat-value red">−{fmtMoney(result.taxDetails.federalTotal)}</span>
-        </div>
-        <div className="stat-row">
-          <span className="stat-label">Net Monthly Take-home</span>
-          <span className="stat-value green">{fmtMoney(result.taxDetails.netMonthly)}</span>
-        </div>
+        {result.taxDetails.jurisdictions.length === 0 ? (
+          <p className="muted" style={{ fontSize: '0.8rem' }}>
+            <Link to="/tax" style={{ color: 'var(--blue)' }}>Configure tax brackets</Link> to see your tax breakdown.
+          </p>
+        ) : (
+          <>
+            <div className="stat-row">
+              <span className="stat-label">Ordinary Income</span>
+              <span className="stat-value">{fmtMoney(result.taxDetails.ordinaryIncome)}</span>
+            </div>
+            {result.taxDetails.ltGainsIncome > 0 && (
+              <div className="stat-row">
+                <span className="stat-label">LT Capital Gains</span>
+                <span className="stat-value">{fmtMoney(result.taxDetails.ltGainsIncome)}</span>
+              </div>
+            )}
+            {result.taxDetails.jurisdictions.map(j => (
+              <div key={j.jurisdictionId} className="stat-row">
+                <span className="stat-label">
+                  {j.name} <span style={{ color: 'var(--fg-subtle)', fontSize: '0.72rem' }}>
+                    (max {fmtPct(j.marginalOrdinaryRate)})
+                  </span>
+                </span>
+                <span className="stat-value red">−{fmtMoney(j.totalTax)}</span>
+              </div>
+            ))}
+            <div className="stat-row" style={{ borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 4 }}>
+              <span className="stat-label" style={{ fontWeight: 600 }}>Net Monthly Take-home</span>
+              <span className="stat-value green">{fmtMoney(result.taxDetails.netMonthly)}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

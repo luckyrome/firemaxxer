@@ -16,6 +16,7 @@ import { expensesRouter } from './routes/expenses';
 import { settingsRouter } from './routes/settings';
 import { fireRouter } from './routes/fire';
 import { refiRouter } from './routes/refi';
+import { taxRouter } from './routes/tax';
 
 export const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/expenses', expensesRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/fire', fireRouter);
 app.use('/api/refi', refiRouter);
+app.use('/api/tax', taxRouter);
 
 app.use(errorHandler);
 

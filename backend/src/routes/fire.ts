@@ -3,9 +3,10 @@ import { requireAuth } from '../middleware/requireAuth';
 import { getSettings } from '../models/settings';
 import { listAssets } from '../models/asset';
 import { listLiabilities } from '../models/liability';
-import { findExpenseSnapshotById, listExpenseItems, itemMonthly } from '../models/expense';
+import { listExpenseItems, itemMonthly } from '../models/expense';
 import { listIncomeSources, toMonthly } from '../models/income';
-import { computeFire } from '../services/fire';
+import { getAccountTaxProfile, findJurisdictionById, findBracketSet } from '../models/taxBracket';
+import { computeFire, type JurisdictionBrackets } from '../services/fire';
 import { query } from '../config/db';
 
 export const fireRouter = Router();
@@ -13,10 +14,10 @@ fireRouter.use(requireAuth);
 
 fireRouter.get('/result', async (req, res) => {
   const accountId = req.account!.id;
-  const config = await getSettings(accountId);
+  const config    = await getSettings(accountId);
 
-  // Compute current net assets
-  const assets = await listAssets(accountId);
+  // Net assets
+  const assets      = await listAssets(accountId);
   const liabilities = await listLiabilities(accountId);
 
   let totalAssets = 0;
@@ -39,14 +40,13 @@ fireRouter.get('/result', async (req, res) => {
 
   const existingAssets = totalAssets - totalLiabilities;
 
-  // Active expenses
+  // Expense snapshots
   let monthlyActiveExpenses = 0;
   if (config.activeExpenseSnapshotId) {
     const items = await listExpenseItems(config.activeExpenseSnapshotId);
     monthlyActiveExpenses = items.reduce((sum, i) => sum + itemMonthly(i), 0);
   }
 
-  // Retired expenses
   let monthlyRetiredExpenses = 0;
   if (config.retiredExpenseSnapshotId) {
     const items = await listExpenseItems(config.retiredExpenseSnapshotId);
@@ -55,19 +55,44 @@ fireRouter.get('/result', async (req, res) => {
 
   // Income sources override
   const sources = await listIncomeSources(accountId);
-  const activeSources = sources.filter(s => s.active);
+  const active  = sources.filter(s => s.active);
   let incomeOverride: { annualTaxable: number; annualNonTaxable: number } | undefined;
-  if (activeSources.length > 0) {
-    let annualTaxable = 0;
-    let annualNonTaxable = 0;
-    for (const s of activeSources) {
-      const monthly = toMonthly(parseFloat(s.amount), s.frequency);
-      if (s.taxable) annualTaxable += monthly * 12;
-      else annualNonTaxable += monthly * 12;
+  if (active.length > 0) {
+    let annualTaxable = 0, annualNonTaxable = 0;
+    for (const s of active) {
+      const mo = toMonthly(parseFloat(s.amount), s.frequency);
+      if (s.taxable) annualTaxable    += mo * 12;
+      else           annualNonTaxable += mo * 12;
     }
     incomeOverride = { annualTaxable, annualNonTaxable };
   }
 
-  const result = computeFire(config, existingAssets, monthlyActiveExpenses, monthlyRetiredExpenses, incomeOverride);
+  // Tax bracket data
+  const taxProfile = await getAccountTaxProfile(accountId);
+  const taxJurisdictions: JurisdictionBrackets[] = [];
+
+  if (taxProfile && taxProfile.jurisdiction_ids.length > 0) {
+    for (const jid of taxProfile.jurisdiction_ids) {
+      const jurisdiction = await findJurisdictionById(jid);
+      if (!jurisdiction) continue;
+
+      const ordSet = await findBracketSet(jid, taxProfile.tax_year, 'ordinary',         taxProfile.filing_status);
+      const ltSet  = await findBracketSet(jid, taxProfile.tax_year, 'long_term_gains',  taxProfile.filing_status);
+
+      taxJurisdictions.push({
+        jurisdictionId:            jid,
+        name:                      jurisdiction.name,
+        abbreviation:              jurisdiction.abbreviation,
+        ordinaryBrackets:          (ordSet?.brackets ?? []).map(b => ({ income_floor: parseFloat(b.income_floor), rate: parseFloat(b.rate) })),
+        ordinaryStandardDeduction: ordSet ? parseFloat(ordSet.standard_deduction) : 0,
+        ltBrackets:                (ltSet?.brackets ?? []).map(b => ({ income_floor: parseFloat(b.income_floor), rate: parseFloat(b.rate) })),
+      });
+    }
+  }
+
+  const result = computeFire(
+    config, existingAssets, monthlyActiveExpenses, monthlyRetiredExpenses,
+    incomeOverride, taxJurisdictions.length > 0 ? taxJurisdictions : undefined,
+  );
   res.json(result);
 });

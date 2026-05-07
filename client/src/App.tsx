@@ -8,6 +8,7 @@ import { IncomePage } from './pages/IncomePage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { FirePage } from './pages/FirePage';
 import { RefiPage } from './pages/RefiPage';
+import { TaxPage } from './pages/TaxPage';
 import { AccountPage } from './pages/AccountPage';
 
 export function App() {
@@ -28,6 +29,7 @@ export function App() {
             <li><NavLink to="/expenses">Expenses</NavLink></li>
             <li><NavLink to="/fire">FIRE Dashboard</NavLink></li>
             <li><NavLink to="/refi">Refi Calculator</NavLink></li>
+            <li><NavLink to="/tax">Tax Brackets</NavLink></li>
             <li><NavLink to="/account">Account</NavLink></li>
           </ul>
           <div className="sidebar-footer">
@@ -49,6 +51,7 @@ export function App() {
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/fire" element={<FirePage />} />
             <Route path="/refi" element={<RefiPage />} />
+            <Route path="/tax" element={<TaxPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

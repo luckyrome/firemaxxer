@@ -129,6 +129,59 @@ export interface ExpenseSummary {
   byCategory: Record<string, number>;
 }
 
+// ── Tax brackets ──────────────────────────────────────────────────────────────
+
+export type JurisdictionType = 'federal' | 'state' | 'local';
+export type IncomeType       = 'ordinary' | 'long_term_gains';
+export type FilingStatus     = 'single' | 'married_joint' | 'married_separate' | 'head_of_household';
+
+export interface TaxJurisdiction {
+  id:           string;
+  name:         string;
+  abbreviation: string;
+  jtype:        JurisdictionType;
+  is_public:    boolean;
+  created_by:   string | null;
+  created_at:   string;
+}
+
+export interface TaxBracket {
+  id:             string;
+  bracket_set_id: string;
+  income_floor:   string;
+  rate:           string;
+}
+
+export interface TaxBracketSet {
+  id:                 string;
+  jurisdiction_id:    string;
+  tax_year:           number;
+  income_type:        IncomeType;
+  filing_status:      FilingStatus;
+  standard_deduction: string;
+  notes:              string | null;
+  created_by:         string | null;
+  brackets:           TaxBracket[];
+}
+
+export interface TaxProfile {
+  tax_year:         number;
+  filing_status:    FilingStatus;
+  jurisdiction_ids: string[];
+}
+
+export interface TaxJurisdictionResult {
+  jurisdictionId:       string;
+  name:                 string;
+  abbreviation:         string;
+  ordinaryTax:          number;
+  ltGainsTax:           number;
+  totalTax:             number;
+  marginalOrdinaryRate: number;
+  ltMarginalRate:       number;
+  effectiveRate:        number;
+}
+
 // ── FIRE ──────────────────────────────────────────────────────────────────────
 
 export interface FireConfig {
@@ -163,10 +216,12 @@ export interface FireResult {
   yearsToFIWithGrowth: number | null;
   estimatedFIDate: string | null;
   taxDetails: {
-    grossIncome: number;
-    caTotal: number;
-    federalTotal: number;
-    netMonthly: number;
+    ordinaryIncome:   number;
+    ltGainsIncome:    number;
+    nonTaxableIncome: number;
+    jurisdictions:    TaxJurisdictionResult[];
+    totalTax:         number;
+    netMonthly:       number;
   };
 }
 
