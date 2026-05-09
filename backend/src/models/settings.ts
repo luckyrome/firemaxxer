@@ -17,6 +17,8 @@ export interface FireConfig {
   safeWithdrawalRate: number;
   assumedGrowthRate: number;
   retirementAnnualIncome: number;
+  fiExplicitTarget: number;
+  retirementWithdrawalType: 'long_term_gains' | 'ordinary';
   activeExpenseSnapshotId: string | null;
   retiredExpenseSnapshotId: string | null;
 }
@@ -38,6 +40,8 @@ export const DEFAULT_FIRE_CONFIG: FireConfig = {
   safeWithdrawalRate: 0.04,
   assumedGrowthRate: 0.04,
   retirementAnnualIncome: 0,
+  fiExplicitTarget: 0,
+  retirementWithdrawalType: 'long_term_gains',
   activeExpenseSnapshotId: null,
   retiredExpenseSnapshotId: null,
 };

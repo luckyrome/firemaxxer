@@ -170,6 +170,14 @@ export interface TaxProfile {
   jurisdiction_ids: string[];
 }
 
+export interface BracketDetail {
+  floor:           number;
+  ceiling:         number | null;
+  rate:            number;
+  amountInBracket: number;
+  taxAmount:       number;
+}
+
 export interface TaxJurisdictionResult {
   jurisdictionId:       string;
   name:                 string;
@@ -180,6 +188,10 @@ export interface TaxJurisdictionResult {
   marginalOrdinaryRate: number;
   ltMarginalRate:       number;
   effectiveRate:        number;
+  standardDeduction:      number;
+  netOrdinaryTaxable:     number;
+  ordinaryBracketDetails: BracketDetail[];
+  ltBracketDetails:       BracketDetail[];
 }
 
 // ── FIRE ──────────────────────────────────────────────────────────────────────
@@ -201,8 +213,25 @@ export interface FireConfig {
   safeWithdrawalRate: number;
   assumedGrowthRate: number;
   retirementAnnualIncome: number;
+  fiExplicitTarget: number;
+  retirementWithdrawalType: 'long_term_gains' | 'ordinary';
   activeExpenseSnapshotId: string | null;
   retiredExpenseSnapshotId: string | null;
+}
+
+export interface FireTargetResult {
+  balance:       number;
+  yearsLinear:   number | null;
+  yearsGrowth:   number | null;
+  estimatedDate: string | null;
+}
+
+export interface RetirementWithdrawal {
+  netAnnual:      number;
+  grossAnnual:    number;
+  taxAnnual:      number;
+  effectiveRate:  number;
+  withdrawalType: 'long_term_gains' | 'ordinary';
 }
 
 export interface FireResult {
@@ -215,6 +244,10 @@ export interface FireResult {
   yearsToFI: number | null;
   yearsToFIWithGrowth: number | null;
   estimatedFIDate: string | null;
+  targetSwr:            FireTargetResult;
+  targetSustainable:    FireTargetResult | null;
+  targetExplicit:       FireTargetResult | null;
+  retirementWithdrawal: RetirementWithdrawal;
   taxDetails: {
     ordinaryIncome:   number;
     ltGainsIncome:    number;

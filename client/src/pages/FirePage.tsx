@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSettings, updateSettings } from '../api/settings';
 import { getFireResult } from '../api/refi';
 import { getExpenseSnapshots } from '../api/expenses';
-import type { FireConfig } from '../types';
+import type { FireConfig, FireTargetResult, RetirementWithdrawal, BracketDetail } from '../types';
 
 function fmtMoney(v: number) {
   return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -12,6 +12,123 @@ function fmtMoney(v: number) {
 
 function fmtPct(r: number) {
   return (r * 100).toFixed(1) + '%';
+}
+
+function RetirementWithdrawalBanner({ rw }: { rw: RetirementWithdrawal }) {
+  if (rw.taxAnnual <= 0) {
+    return (
+      <p className="muted" style={{ fontSize: '0.76rem', marginBottom: 8 }}>
+        No tax jurisdictions configured — targets do not include a withdrawal tax gross-up.{' '}
+        <Link to="/tax" style={{ color: 'var(--blue)' }}>Configure →</Link>
+      </p>
+    );
+  }
+  return (
+    <div style={{
+      background: 'var(--bg-overlay)', border: '1px solid var(--border)',
+      borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: '0.76rem',
+    }}>
+      <span style={{ color: 'var(--fg-sec)', fontWeight: 600 }}>Retirement withdrawal gross-up</span>
+      <span className="muted"> · {rw.withdrawalType === 'long_term_gains' ? 'LT cap gains' : 'Ordinary income'} treatment</span>
+      <div style={{ display: 'flex', gap: 20, marginTop: 4, flexWrap: 'wrap' }}>
+        <span>Need <strong>{fmtMoney(rw.netAnnual)}/yr</strong> after tax</span>
+        <span>Must withdraw <strong>{fmtMoney(rw.grossAnnual)}/yr</strong> gross</span>
+        <span className="red">Tax on withdrawals: <strong>{fmtMoney(rw.taxAnnual)}/yr</strong></span>
+        <span className="muted">Effective retirement rate: <strong>{fmtPct(rw.effectiveRate)}</strong></span>
+      </div>
+    </div>
+  );
+}
+
+function TargetRow({
+  label, description, target, netWorth, color = 'var(--blue)',
+}: {
+  label: string;
+  description: string;
+  target: FireTargetResult;
+  netWorth: number;
+  color?: string;
+}) {
+  const pct   = target.balance > 0 ? Math.min(100, Math.max(0, (netWorth / target.balance) * 100)) : 0;
+  const done  = netWorth >= target.balance;
+  return (
+    <div style={{ padding: '14px 0', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <div>
+          <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{label}</span>
+          <span className="muted" style={{ fontSize: '0.74rem', marginLeft: 8 }}>{description}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
+          <span style={{ fontSize: '0.78rem', color: 'var(--fg-muted)' }}>
+            {fmtMoney(netWorth)} / <strong>{fmtMoney(target.balance)}</strong>
+          </span>
+          <span style={{ fontSize: '0.78rem', color: done ? 'var(--green)' : color, fontWeight: 600 }}>
+            {done ? 'Achieved' : target.yearsGrowth !== null ? `${target.yearsGrowth}yr` : '—'}
+          </span>
+          {!done && target.estimatedDate && (
+            <span className="muted" style={{ fontSize: '0.74rem' }}>{target.estimatedDate}</span>
+          )}
+        </div>
+      </div>
+      <div style={{ background: 'var(--bg-overlay)', borderRadius: 4, height: 7, overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', width: `${pct}%`,
+          background: done ? 'var(--green)' : color,
+          borderRadius: 4, transition: 'width 0.4s ease',
+        }} />
+      </div>
+      <div style={{ fontSize: '0.7rem', color: 'var(--fg-subtle)', marginTop: 3 }}>
+        {pct.toFixed(1)}% funded
+        {!done && target.yearsLinear !== null && (
+          <span> · {target.yearsLinear.toFixed(1)}yr linear</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BracketTable({ details, label }: { details: BracketDetail[]; label: string }) {
+  const [open, setOpen] = useState(false);
+  if (details.length === 0) return null;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--fg-muted)', fontSize: '0.7rem', padding: 0, display: 'flex', alignItems: 'center', gap: 4,
+        }}
+      >
+        <span style={{ fontSize: '0.65rem' }}>{open ? '▼' : '▶'}</span>
+        {label} bracket details
+      </button>
+      {open && (
+        <table style={{ width: '100%', fontSize: '0.7rem', borderCollapse: 'collapse', marginTop: 4 }}>
+          <thead>
+            <tr style={{ color: 'var(--fg-subtle)', textAlign: 'right' }}>
+              <th style={{ textAlign: 'left', fontWeight: 400, paddingBottom: 2 }}>Bracket</th>
+              <th style={{ fontWeight: 400, paddingBottom: 2 }}>Rate</th>
+              <th style={{ fontWeight: 400, paddingBottom: 2 }}>Income in bracket</th>
+              <th style={{ fontWeight: 400, paddingBottom: 2 }}>Tax</th>
+            </tr>
+          </thead>
+          <tbody>
+            {details.map((d, i) => (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '2px 0', color: 'var(--fg-sec)' }}>
+                  {fmtMoney(d.floor)} – {d.ceiling !== null ? fmtMoney(d.ceiling) : '∞'}
+                </td>
+                <td style={{ textAlign: 'right', color: 'var(--fg-sec)' }}>{fmtPct(d.rate)}</td>
+                <td style={{ textAlign: 'right' }}>{fmtMoney(d.amountInBracket)}</td>
+                <td style={{ textAlign: 'right', color: 'var(--red)' }}>−{fmtMoney(d.taxAmount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 function NumField({ label, name, value, onChange, pct }: {
@@ -101,22 +218,57 @@ export function FirePage() {
             </div>
           </div>
 
-          <div className="summary-cards">
-            <div className="summary-card">
-              <div className="summary-card-label">Years to FI (linear)</div>
-              <div className="summary-card-value">{result.yearsToFI !== null ? result.yearsToFI.toFixed(1) : '—'}</div>
+          {/* FI Targets */}
+          <div className="section-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: 600 }}>FI Targets</h2>
+              <span className="muted" style={{ fontSize: '0.76rem' }}>
+                Net Worth: <strong style={{ color: 'var(--fg)' }}>{fmtMoney(result.existingAssets)}</strong>
+                {result.monthlyRetiredExpenses > 0 && (
+                  <> · Retired expenses: {fmtMoney(result.monthlyRetiredExpenses)}/mo</>
+                )}
+              </span>
             </div>
-            <div className="summary-card">
-              <div className="summary-card-label">Years to FI (with growth)</div>
-              <div className="summary-card-value blue">{result.yearsToFIWithGrowth !== null ? result.yearsToFIWithGrowth : '—'}</div>
-            </div>
-            <div className="summary-card">
-              <div className="summary-card-label">Estimated FI Date</div>
-              <div className="summary-card-value blue">{result.estimatedFIDate ?? '—'}</div>
-            </div>
-            <div className="summary-card">
-              <div className="summary-card-label">Retired Expenses / Mo</div>
-              <div className="summary-card-value">{fmtMoney(result.monthlyRetiredExpenses)}</div>
+            <RetirementWithdrawalBanner rw={result.retirementWithdrawal} />
+
+            <TargetRow
+              label="Conservative (SWR)"
+              description={`expenses ÷ ${fmtPct(config?.safeWithdrawalRate ?? 0.04)} withdrawal rate`}
+              target={result.targetSwr}
+              netWorth={result.existingAssets}
+              color="var(--blue)"
+            />
+
+            {result.targetSustainable && (
+              <TargetRow
+                label="Self-Sustaining"
+                description={`expenses ÷ ${fmtPct(config?.assumedGrowthRate ?? 0)} growth rate — portfolio never declines`}
+                target={result.targetSustainable}
+                netWorth={result.existingAssets}
+                color="var(--purple, var(--blue))"
+              />
+            )}
+
+            {result.targetExplicit && (
+              <TargetRow
+                label="My Goal"
+                description="user-defined target"
+                target={result.targetExplicit}
+                netWorth={result.existingAssets}
+                color="var(--green)"
+              />
+            )}
+
+            <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.76rem', color: 'var(--fg-muted)' }}>
+                Monthly surplus: <strong style={{ color: result.monthlyIncome - result.monthlyExpenses >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {fmtMoney(result.monthlyIncome - result.monthlyExpenses)}/mo
+                </strong>
+              </span>
+              <span style={{ fontSize: '0.76rem', color: 'var(--fg-muted)' }}>
+                SWR: {fmtPct(config?.safeWithdrawalRate ?? 0.04)} ·
+                Growth: {fmtPct(config?.assumedGrowthRate ?? 0)}
+              </span>
             </div>
           </div>
 
@@ -151,29 +303,47 @@ export function FirePage() {
                 )}
                 <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0' }} />
                 {tax!.jurisdictions.map(j => (
-                  <div key={j.jurisdictionId} style={{ marginBottom: 8 }}>
+                  <div key={j.jurisdictionId} style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: 600, marginBottom: 4 }}>
                       <span>{j.name} ({j.abbreviation})</span>
                       <span className="red">−{fmtMoney(j.totalTax)}</span>
                     </div>
                     <div style={{ paddingLeft: 12 }}>
-                      {j.ordinaryTax > 0 && (
-                        <div className="stat-row" style={{ fontSize: '0.76rem' }}>
-                          <span className="stat-label muted">
-                            Ordinary tax <span style={{ color: 'var(--fg-subtle)' }}>(marginal {fmtPct(j.marginalOrdinaryRate)})</span>
-                          </span>
-                          <span className="stat-value red">−{fmtMoney(j.ordinaryTax)}</span>
+                      {j.standardDeduction > 0 && (
+                        <div className="stat-row" style={{ fontSize: '0.72rem' }}>
+                          <span className="stat-label muted">Standard deduction</span>
+                          <span className="stat-value muted">−{fmtMoney(j.standardDeduction)}</span>
                         </div>
+                      )}
+                      {j.netOrdinaryTaxable > 0 && (
+                        <div className="stat-row" style={{ fontSize: '0.72rem' }}>
+                          <span className="stat-label muted">Ordinary taxable (after deduction)</span>
+                          <span className="stat-value muted">{fmtMoney(j.netOrdinaryTaxable)}</span>
+                        </div>
+                      )}
+                      {j.ordinaryTax > 0 && (
+                        <>
+                          <div className="stat-row" style={{ fontSize: '0.76rem' }}>
+                            <span className="stat-label muted">
+                              Ordinary tax <span style={{ color: 'var(--fg-subtle)' }}>(marginal {fmtPct(j.marginalOrdinaryRate)})</span>
+                            </span>
+                            <span className="stat-value red">−{fmtMoney(j.ordinaryTax)}</span>
+                          </div>
+                          <BracketTable details={j.ordinaryBracketDetails} label="Ordinary" />
+                        </>
                       )}
                       {j.ltGainsTax > 0 && (
-                        <div className="stat-row" style={{ fontSize: '0.76rem' }}>
-                          <span className="stat-label muted">
-                            LT gains tax <span style={{ color: 'var(--fg-subtle)' }}>(marginal {fmtPct(j.ltMarginalRate)})</span>
-                          </span>
-                          <span className="stat-value red">−{fmtMoney(j.ltGainsTax)}</span>
-                        </div>
+                        <>
+                          <div className="stat-row" style={{ fontSize: '0.76rem', marginTop: 2 }}>
+                            <span className="stat-label muted">
+                              LT gains tax <span style={{ color: 'var(--fg-subtle)' }}>(marginal {fmtPct(j.ltMarginalRate)})</span>
+                            </span>
+                            <span className="stat-value red">−{fmtMoney(j.ltGainsTax)}</span>
+                          </div>
+                          <BracketTable details={j.ltBracketDetails} label="LT gains" />
+                        </>
                       )}
-                      <div className="stat-row" style={{ fontSize: '0.72rem' }}>
+                      <div className="stat-row" style={{ fontSize: '0.72rem', marginTop: 2 }}>
                         <span className="stat-label muted">Effective rate</span>
                         <span className="stat-value muted">{fmtPct(j.effectiveRate)}</span>
                       </div>
@@ -217,6 +387,17 @@ export function FirePage() {
               <NumField label="Safe Withdrawal Rate (%)"           name="safeWithdrawalRate"        value={cfg.safeWithdrawalRate ?? 0.04}   onChange={setField} pct />
               <NumField label="Assumed Annual Growth Rate (%)"     name="assumedGrowthRate"          value={cfg.assumedGrowthRate ?? 0.04}    onChange={setField} pct />
               <NumField label="Target Retirement Annual Income"    name="retirementAnnualIncome"     value={cfg.retirementAnnualIncome ?? 0}  onChange={setField} />
+              <NumField label="Explicit FI Target ($, optional)"  name="fiExplicitTarget"           value={cfg.fiExplicitTarget ?? 0}        onChange={setField} />
+              <label className="field">
+                Retirement Withdrawal Type
+                <select
+                  value={cfg.retirementWithdrawalType ?? 'long_term_gains'}
+                  onChange={e => setDraft(d => ({ ...d, retirementWithdrawalType: e.target.value as 'long_term_gains' | 'ordinary' }))}
+                >
+                  <option value="long_term_gains">Long-Term Capital Gains</option>
+                  <option value="ordinary">Ordinary Income (e.g. 401k withdrawals)</option>
+                </select>
+              </label>
               <label className="field">
                 Active Expense Snapshot
                 <select

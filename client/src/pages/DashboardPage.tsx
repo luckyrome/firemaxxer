@@ -61,9 +61,6 @@ export function DashboardPage() {
   }
 
   const surplus = result.monthlyIncome - result.monthlyExpenses;
-  const progressPct = result.fiBalance > 0
-    ? Math.min(100, (result.existingAssets / result.fiBalance) * 100)
-    : 0;
 
   const latestNetWorth = netWorthHistory.length > 0
     ? netWorthHistory[netWorthHistory.length - 1]
@@ -104,43 +101,79 @@ export function DashboardPage() {
 
       {/* FI Progress */}
       <div className="section-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
           <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--fg)' }}>FI Progress</h2>
           <Link to="/fire" style={{ fontSize: '0.78rem', color: 'var(--blue)' }}>Configure →</Link>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--fg-muted)', marginBottom: 6 }}>
-          <span>{fmtMoney(result.existingAssets)} saved</span>
-          <span style={{ color: 'var(--fg-subtle)' }}>{progressPct.toFixed(1)}%</span>
-          <span>{fmtMoney(result.fiBalance)} target</span>
-        </div>
-        <ProgressBar
-          value={result.existingAssets}
-          max={result.fiBalance}
-          color={progressPct >= 100 ? 'var(--green)' : progressPct >= 75 ? 'var(--blue)' : 'var(--blue)'}
-        />
+        {/* SWR target */}
+        {(() => {
+          const t = result.targetSwr;
+          const pct = t.balance > 0 ? Math.min(100, Math.max(0, (result.existingAssets / t.balance) * 100)) : 0;
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--fg-muted)', marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>Conservative — {((config?.safeWithdrawalRate ?? 0.04) * 100).toFixed(1)}% SWR</span>
+                <span>{fmtMoney(result.existingAssets)} / {fmtMoney(t.balance)} · <strong>{pct.toFixed(1)}%</strong>
+                  {t.yearsGrowth !== null && <> · {t.yearsGrowth}yr ({t.estimatedDate})</>}
+                </span>
+              </div>
+              <ProgressBar value={result.existingAssets} max={t.balance} color="var(--blue)" />
+            </div>
+          );
+        })()}
+
+        {/* Self-sustaining target */}
+        {result.targetSustainable && (() => {
+          const t = result.targetSustainable!;
+          const pct = t.balance > 0 ? Math.min(100, Math.max(0, (result.existingAssets / t.balance) * 100)) : 0;
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--fg-muted)', marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>Self-Sustaining — {((config?.assumedGrowthRate ?? 0) * 100).toFixed(1)}% growth</span>
+                <span>{fmtMoney(result.existingAssets)} / {fmtMoney(t.balance)} · <strong>{pct.toFixed(1)}%</strong>
+                  {t.yearsGrowth !== null && <> · {t.yearsGrowth}yr ({t.estimatedDate})</>}
+                </span>
+              </div>
+              <ProgressBar value={result.existingAssets} max={t.balance} color="var(--purple, #a78bfa)" />
+            </div>
+          );
+        })()}
+
+        {/* Explicit target */}
+        {result.targetExplicit && (() => {
+          const t = result.targetExplicit!;
+          const pct = t.balance > 0 ? Math.min(100, Math.max(0, (result.existingAssets / t.balance) * 100)) : 0;
+          return (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--fg-muted)', marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>My Goal</span>
+                <span>{fmtMoney(result.existingAssets)} / {fmtMoney(t.balance)} · <strong>{pct.toFixed(1)}%</strong>
+                  {t.yearsGrowth !== null && <> · {t.yearsGrowth}yr ({t.estimatedDate})</>}
+                </span>
+              </div>
+              <ProgressBar value={result.existingAssets} max={t.balance} color="var(--green)" />
+            </div>
+          );
+        })()}
 
         <div className="summary-cards" style={{ marginTop: 16, marginBottom: 0 }}>
-          <div className="summary-card">
-            <div className="summary-card-label">Years to FI</div>
-            <div className="summary-card-value blue">
-              {result.yearsToFIWithGrowth !== null ? result.yearsToFIWithGrowth : '—'}
-            </div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--fg-subtle)', marginTop: 2 }}>with {((config?.assumedGrowthRate ?? 0.04) * 100).toFixed(1)}% growth</div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-card-label">Estimated FI Date</div>
-            <div className="summary-card-value blue">{result.estimatedFIDate ?? '—'}</div>
-          </div>
-          <div className="summary-card">
-            <div className="summary-card-label">FI Target</div>
-            <div className="summary-card-value">{fmtMoney(result.fiBalance)}</div>
-            <div style={{ fontSize: '0.7rem', color: 'var(--fg-subtle)', marginTop: 2 }}>{((config?.safeWithdrawalRate ?? 0.04) * 100).toFixed(1)}% SWR</div>
-          </div>
           <div className="summary-card">
             <div className="summary-card-label">Retired Expenses / Mo</div>
             <div className="summary-card-value">{fmtMoney(result.monthlyRetiredExpenses)}</div>
           </div>
+          <div className="summary-card">
+            <div className="summary-card-label">FI Date (SWR)</div>
+            <div className="summary-card-value blue">{result.targetSwr.estimatedDate ?? '—'}</div>
+          </div>
+          {result.targetSustainable && (
+            <div className="summary-card">
+              <div className="summary-card-label">FI Date (Sustaining)</div>
+              <div className="summary-card-value" style={{ color: 'var(--purple, var(--blue))' }}>
+                {result.targetSustainable.estimatedDate ?? '—'}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

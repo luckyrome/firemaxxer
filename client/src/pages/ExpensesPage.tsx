@@ -327,7 +327,7 @@ function ItemModal({
               <input value={form.vertical} onChange={e => setForm(f => ({ ...f, vertical: e.target.value }))} placeholder="optional" />
             </label>
             <label className="field">Amount
-              <input type="number" min="0" step="0.01" value={form.amount}
+              <input type="number" step="0.01" value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} required />
             </label>
             <label className="field">Frequency
@@ -442,11 +442,21 @@ function SnapshotDetail({ snapshot }: { snapshot: ExpenseSnapshot }) {
                 <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--fg-sec)' }}>{category}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--fg-muted)' }}>{fmtMoney(catTotal)}/mo</span>
               </div>
-              <table className="data-table" style={{ marginBottom: 0 }}>
+              <table className="data-table" style={{ marginBottom: 0, tableLayout: 'fixed', width: '100%' }}>
+                <colgroup>
+                  <col />
+                  <col style={{ width: 90 }} />
+                  <col style={{ width: 100 }} />
+                  <col style={{ width: 90 }} />
+                  <col style={{ width: 90 }} />
+                  <col style={{ width: 110 }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Name</th><th>Owner</th><th>Freq</th>
-                    <th>Amount</th><th>Monthly</th><th></th>
+                    <th style={{ textAlign: 'right' }}>Amount</th>
+                    <th style={{ textAlign: 'right' }}>Monthly</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
