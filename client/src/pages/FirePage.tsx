@@ -681,7 +681,7 @@ export function FirePage() {
             <div className="summary-card">
               <div className="summary-card-label">Monthly Surplus</div>
               <div className={`summary-card-value ${surplus >= 0 ? 'green' : 'red'}`}>
-                {(surplus >= 0 ? '+' : '−') + fmtMoney(surplus)}
+                {(surplus >= 0 ? '+' : '−') + fmtMoney(Math.abs(surplus))}
               </div>
             </div>
           </div>
