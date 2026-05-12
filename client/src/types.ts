@@ -226,12 +226,22 @@ export interface FireTargetResult {
   estimatedDate: string | null;
 }
 
-export interface RetirementWithdrawal {
-  netAnnual:      number;
-  grossAnnual:    number;
-  taxAnnual:      number;
+export interface RetirementJurisdictionTax {
+  jurisdictionId: string;
+  name:           string;
+  abbreviation:   string;
+  taxAmount:      number;
   effectiveRate:  number;
-  withdrawalType: 'long_term_gains' | 'ordinary';
+  bracketDetails: BracketDetail[];
+}
+
+export interface RetirementWithdrawal {
+  netAnnual:         number;
+  grossAnnual:       number;
+  taxAnnual:         number;
+  effectiveRate:     number;
+  withdrawalType:    'long_term_gains' | 'ordinary';
+  jurisdictionTaxes: RetirementJurisdictionTax[];
 }
 
 export interface FireResult {

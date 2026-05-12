@@ -24,7 +24,7 @@ export function App() {
           <div className="sidebar-logo">Firemaxxer</div>
           <ul className="sidebar-nav">
             <li><NavLink to="/" end>Dashboard</NavLink></li>
-            <li><NavLink to="/assets">Assets &amp; Liabilities</NavLink></li>
+            <li><NavLink to="/net-worth">Assets &amp; Liabilities</NavLink></li>
             <li><NavLink to="/income">Income</NavLink></li>
             <li><NavLink to="/expenses">Expenses</NavLink></li>
             <li><NavLink to="/fire">FIRE Dashboard</NavLink></li>
@@ -46,7 +46,7 @@ export function App() {
         <main className="main-content">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/assets" element={<AssetsPage />} />
+            <Route path="/net-worth" element={<AssetsPage />} />
             <Route path="/income" element={<IncomePage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/fire" element={<FirePage />} />

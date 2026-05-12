@@ -57,12 +57,22 @@ export interface FireTargetResult {
   estimatedDate: string | null;
 }
 
+export interface RetirementJurisdictionTax {
+  jurisdictionId: string;
+  name:           string;
+  abbreviation:   string;
+  taxAmount:      number;
+  effectiveRate:  number;
+  bracketDetails: BracketDetail[];
+}
+
 export interface RetirementWithdrawal {
-  netAnnual:      number;  // after-tax expenses needed
-  grossAnnual:    number;  // must withdraw this to net the expenses
-  taxAnnual:      number;  // annual tax burden in retirement
-  effectiveRate:  number;  // effective tax rate on the gross withdrawal
-  withdrawalType: 'long_term_gains' | 'ordinary';
+  netAnnual:         number;  // after-tax expenses needed
+  grossAnnual:       number;  // must withdraw this to net the expenses
+  taxAnnual:         number;  // annual tax burden in retirement
+  effectiveRate:     number;  // effective tax rate on the gross withdrawal
+  withdrawalType:    'long_term_gains' | 'ordinary';
+  jurisdictionTaxes: RetirementJurisdictionTax[];
 }
 
 export interface FireResult {
@@ -167,14 +177,13 @@ function solveGrossWithdrawal(
   withdrawalType: 'long_term_gains' | 'ordinary',
 ): RetirementWithdrawal {
   if (jurisdictions.length === 0 || netNeeded <= 0) {
-    return { netAnnual: netNeeded, grossAnnual: netNeeded, taxAnnual: 0, effectiveRate: 0, withdrawalType };
+    return { netAnnual: netNeeded, grossAnnual: netNeeded, taxAnnual: 0, effectiveRate: 0, withdrawalType, jurisdictionTaxes: [] };
   }
 
   let gross = netNeeded;
   for (let iter = 0; iter < 40; iter++) {
     let tax = 0;
     for (const j of jurisdictions) {
-      // Standard deduction applies to the entire withdrawal (only income source in retirement)
       const taxable  = Math.max(0, gross - j.ordinaryStandardDeduction);
       const brackets = withdrawalType === 'long_term_gains' && j.ltBrackets.length > 0
         ? j.ltBrackets
@@ -186,6 +195,23 @@ function solveGrossWithdrawal(
     gross = next;
   }
 
+  // After convergence, compute per-jurisdiction breakdown on the final gross
+  const jurisdictionTaxes: RetirementJurisdictionTax[] = jurisdictions.map(j => {
+    const taxable  = Math.max(0, gross - j.ordinaryStandardDeduction);
+    const brackets = withdrawalType === 'long_term_gains' && j.ltBrackets.length > 0
+      ? j.ltBrackets
+      : j.ordinaryBrackets;
+    const { tax: taxAmount, details: bracketDetails } = progressiveTax(taxable, brackets, 0);
+    return {
+      jurisdictionId: j.jurisdictionId,
+      name:           j.name,
+      abbreviation:   j.abbreviation,
+      taxAmount,
+      effectiveRate:  gross > 0 ? taxAmount / gross : 0,
+      bracketDetails,
+    };
+  });
+
   const taxAnnual = gross - netNeeded;
   return {
     netAnnual:     netNeeded,
@@ -193,6 +219,7 @@ function solveGrossWithdrawal(
     taxAnnual,
     effectiveRate: gross > 0 ? taxAnnual / gross : 0,
     withdrawalType,
+    jurisdictionTaxes,
   };
 }
 

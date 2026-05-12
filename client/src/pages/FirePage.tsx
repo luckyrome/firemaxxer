@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSettings, updateSettings } from '../api/settings';
 import { getFireResult } from '../api/refi';
 import { getExpenseSnapshots } from '../api/expenses';
-import type { FireConfig, FireTargetResult, RetirementWithdrawal, BracketDetail } from '../types';
+import type { FireConfig, FireTargetResult, RetirementWithdrawal, BracketDetail, RetirementJurisdictionTax } from '../types';
 
 function fmtMoney(v: number) {
   return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -24,18 +24,110 @@ function RetirementWithdrawalBanner({ rw }: { rw: RetirementWithdrawal }) {
     );
   }
   return (
-    <div style={{
-      background: 'var(--bg-overlay)', border: '1px solid var(--border)',
-      borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: '0.76rem',
-    }}>
-      <span style={{ color: 'var(--fg-sec)', fontWeight: 600 }}>Retirement withdrawal gross-up</span>
-      <span className="muted"> · {rw.withdrawalType === 'long_term_gains' ? 'LT cap gains' : 'Ordinary income'} treatment</span>
-      <div style={{ display: 'flex', gap: 20, marginTop: 4, flexWrap: 'wrap' }}>
-        <span>Need <strong>{fmtMoney(rw.netAnnual)}/yr</strong> after tax</span>
-        <span>Must withdraw <strong>{fmtMoney(rw.grossAnnual)}/yr</strong> gross</span>
-        <span className="red">Tax on withdrawals: <strong>{fmtMoney(rw.taxAnnual)}/yr</strong></span>
-        <span className="muted">Effective retirement rate: <strong>{fmtPct(rw.effectiveRate)}</strong></span>
+    <p className="muted" style={{ fontSize: '0.76rem', marginBottom: 8 }}>
+      Targets gross up for <strong>{fmtPct(rw.effectiveRate)}</strong> retirement tax —
+      must withdraw <strong style={{ color: 'var(--fg)' }}>{fmtMoney(rw.grossAnnual / 12)}/mo</strong> to
+      net <strong style={{ color: 'var(--fg)' }}>{fmtMoney(rw.netAnnual / 12)}/mo</strong>.{' '}
+      See Tax Breakdown ↓ for details.
+    </p>
+  );
+}
+
+function RetirementWaterfall({ rw }: { rw: RetirementWithdrawal }) {
+  const grossMonthly = rw.grossAnnual / 12;
+  const netMonthly   = rw.netAnnual   / 12;
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Retirement Withdrawal</span>
+        <span className="muted" style={{ fontSize: '0.72rem' }}>
+          {rw.withdrawalType === 'long_term_gains' ? 'LT cap gains treatment' : 'Ordinary income treatment'}
+        </span>
       </div>
+
+      {/* Gross withdrawal row */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '6px 10px', background: 'var(--bg-overlay)', borderRadius: '6px 6px 0 0',
+        borderBottom: '1px solid var(--border)', fontSize: '0.8rem',
+      }}>
+        <span style={{ color: 'var(--fg-sec)' }}>Gross withdrawal needed</span>
+        <span style={{ fontWeight: 600 }}>{fmtMoney(grossMonthly)}/mo</span>
+      </div>
+
+      {/* Per-jurisdiction tax rows */}
+      {rw.jurisdictionTaxes.map((jt, idx) => (
+        <JurisdictionWithdrawalRow
+          key={jt.jurisdictionId}
+          jt={jt}
+          isLast={idx === rw.jurisdictionTaxes.length - 1}
+        />
+      ))}
+
+      {/* Net usable */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '7px 10px', background: 'var(--bg-overlay)', borderRadius: '0 0 6px 6px',
+        borderTop: '2px solid var(--border)', fontSize: '0.84rem', fontWeight: 600,
+      }}>
+        <span style={{ color: 'var(--green)' }}>Net monthly usable</span>
+        <span style={{ color: 'var(--green)' }}>{fmtMoney(netMonthly)}/mo</span>
+      </div>
+    </div>
+  );
+}
+
+function JurisdictionWithdrawalRow({ jt, isLast }: { jt: RetirementJurisdictionTax; isLast: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{
+      borderBottom: isLast ? 'none' : '1px solid var(--border)',
+      background: 'var(--bg-card)',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '5px 10px', fontSize: '0.78rem',
+      }}>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--fg-sec)', padding: 0, display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: '0.78rem',
+          }}
+        >
+          <span style={{ fontSize: '0.65rem', color: 'var(--fg-subtle)' }}>{open ? '▼' : '▶'}</span>
+          {jt.name}
+          <span className="muted" style={{ fontSize: '0.7rem' }}>({fmtPct(jt.effectiveRate)} effective)</span>
+        </button>
+        <span className="red">−{fmtMoney(jt.taxAmount / 12)}/mo</span>
+      </div>
+      {open && jt.bracketDetails.length > 0 && (
+        <table style={{ width: '100%', fontSize: '0.7rem', borderCollapse: 'collapse', padding: '0 10px 6px', tableLayout: 'fixed' }}>
+          <thead>
+            <tr style={{ color: 'var(--fg-subtle)' }}>
+              <th style={{ textAlign: 'left', fontWeight: 400, paddingLeft: 28, paddingBottom: 2 }}>Bracket</th>
+              <th style={{ fontWeight: 400, textAlign: 'right', paddingBottom: 2 }}>Rate</th>
+              <th style={{ fontWeight: 400, textAlign: 'right', paddingBottom: 2 }}>Amount in bracket</th>
+              <th style={{ fontWeight: 400, textAlign: 'right', paddingRight: 10, paddingBottom: 2 }}>Tax</th>
+            </tr>
+          </thead>
+          <tbody>
+            {jt.bracketDetails.map((d, i) => (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ padding: '2px 0 2px 28px', color: 'var(--fg-sec)' }}>
+                  {fmtMoney(d.floor)} – {d.ceiling !== null ? fmtMoney(d.ceiling) : '∞'}
+                </td>
+                <td style={{ textAlign: 'right', color: 'var(--fg-sec)' }}>{fmtPct(d.rate)}</td>
+                <td style={{ textAlign: 'right' }}>{fmtMoney(d.amountInBracket)}</td>
+                <td style={{ textAlign: 'right', color: 'var(--red)', paddingRight: 10 }}>−{fmtMoney(d.taxAmount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
@@ -285,6 +377,7 @@ export function FirePage() {
               </p>
             ) : (
               <>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 8 }}>Working Phase</div>
                 <div className="stat-row">
                   <span className="stat-label">Ordinary Income</span>
                   <span className="stat-value">{fmtMoney(tax!.ordinaryIncome)}</span>
@@ -359,6 +452,13 @@ export function FirePage() {
                   <span className="stat-label" style={{ fontWeight: 600 }}>Net Monthly Take-home</span>
                   <span className="stat-value green">{fmtMoney(tax!.netMonthly)}</span>
                 </div>
+
+                {result!.retirementWithdrawal.jurisdictionTaxes.length > 0 && (
+                  <>
+                    <div style={{ borderTop: '1px solid var(--border)', margin: '14px 0 10px' }} />
+                    <RetirementWaterfall rw={result!.retirementWithdrawal} />
+                  </>
+                )}
               </>
             )}
           </div>
