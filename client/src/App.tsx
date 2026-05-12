@@ -10,6 +10,7 @@ import { FirePage } from './pages/FirePage';
 import { RefiPage } from './pages/RefiPage';
 import { TaxPage } from './pages/TaxPage';
 import { AccountPage } from './pages/AccountPage';
+import { AboutPage } from './pages/AboutPage';
 
 type Theme = 'dark' | 'light';
 
@@ -70,12 +71,16 @@ export function App() {
             <li><NavLink to="/net-worth" onClick={closeNav}>Assets &amp; Liabilities</NavLink></li>
             <li><NavLink to="/income" onClick={closeNav}>Income</NavLink></li>
             <li><NavLink to="/expenses" onClick={closeNav}>Expenses</NavLink></li>
+
+            <li className="nav-section-divider" />
+            <li className="nav-section-label">Tools</li>
             <li><NavLink to="/refi" onClick={closeNav}>Refi Calculator</NavLink></li>
 
             <li className="nav-section-divider" />
             <li className="nav-section-label">Settings</li>
             <li><NavLink to="/tax" onClick={closeNav}>Tax Brackets</NavLink></li>
             <li><NavLink to="/account" onClick={closeNav}>Account</NavLink></li>
+            <li><NavLink to="/about" onClick={closeNav}>About</NavLink></li>
           </ul>
 
           <div className="sidebar-footer">
@@ -119,6 +124,7 @@ export function App() {
             <Route path="/refi" element={<RefiPage />} />
             <Route path="/tax" element={<TaxPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
