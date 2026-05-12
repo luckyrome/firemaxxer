@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getJurisdictions, createJurisdiction,
+  getJurisdictions, createJurisdiction, deleteJurisdiction,
   getBracketSets, upsertBracketSet, deleteBracketSet,
   getTaxProfile, saveTaxProfile,
 } from '../api/tax';
+import { useAuth } from '../context/AuthContext';
 import { PageHelp } from '../components/HelpDialog';
 import type {
   TaxJurisdiction, TaxBracketSet, TaxProfile,
@@ -150,28 +151,40 @@ function BracketSetForm({ jurisdictionId, existing, onDone }: BracketSetFormProp
 // ── Jurisdiction section ──────────────────────────────────────────────────────
 
 function JurisdictionSection({
-  jurisdiction, profileJurisdictionIds, onToggle,
+  jurisdiction, profileJurisdictionIds, onToggle, accountId,
 }: {
   jurisdiction: TaxJurisdiction;
   profileJurisdictionIds: string[];
   onToggle: (id: string, checked: boolean) => void;
+  accountId: string;
 }) {
   const qc = useQueryClient();
   const [expanded,   setExpanded]   = useState(false);
   const [addingSet,  setAddingSet]  = useState(false);
   const [editingSet, setEditingSet] = useState<TaxBracketSet | null>(null);
   const selected = profileJurisdictionIds.includes(jurisdiction.id);
+  const isOwner = !jurisdiction.is_public && jurisdiction.created_by === accountId;
 
-  const { data: sets = [] } = useQuery({
+  const { data: sets = [], isLoading: setsLoading } = useQuery({
     queryKey: ['bracket-sets', jurisdiction.id],
     queryFn: () => getBracketSets(jurisdiction.id),
-    enabled: expanded,
+    enabled: expanded || isOwner,
   });
 
   const delSetMut = useMutation({
     mutationFn: deleteBracketSet,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['bracket-sets', jurisdiction.id] }),
   });
+
+  const delJurisdictionMut = useMutation({
+    mutationFn: () => deleteJurisdiction(jurisdiction.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tax-jurisdictions'] });
+      qc.invalidateQueries({ queryKey: ['tax-profile'] });
+    },
+  });
+
+  const canDelete = isOwner && !setsLoading && sets.length === 0 && !selected;
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 6, marginBottom: 8, overflow: 'hidden' }}>
@@ -199,6 +212,27 @@ function JurisdictionSection({
         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--fg-subtle)' }}>
           {sets.length > 0 ? `${sets.length} bracket set${sets.length > 1 ? 's' : ''}` : ''}
         </span>
+        {isOwner && (
+          <button
+            className="btn btn-danger"
+            style={{ fontSize: '0.68rem', padding: '2px 8px', flexShrink: 0 }}
+            disabled={!canDelete || delJurisdictionMut.isPending}
+            title={
+              setsLoading ? 'Checking for linked bracket sets…' :
+              selected ? 'Remove from tax profile before deleting' :
+              sets.length > 0 ? 'Delete all bracket sets before deleting jurisdiction' :
+              'Delete this jurisdiction'
+            }
+            onClick={e => {
+              e.stopPropagation();
+              if (confirm(`Delete "${jurisdiction.name}"? This cannot be undone.`)) {
+                delJurisdictionMut.mutate();
+              }
+            }}
+          >
+            {delJurisdictionMut.isPending ? '…' : 'Delete'}
+          </button>
+        )}
       </div>
 
       {expanded && (
@@ -331,6 +365,7 @@ function JurisdictionModal({ onClose, onSave }: { onClose: () => void; onSave: (
 
 export function TaxPage() {
   const qc = useQueryClient();
+  const { account } = useAuth();
   const [showJModal, setShowJModal] = useState(false);
 
   const { data: jurisdictions = [], isLoading: jLoading } = useQuery({
@@ -435,6 +470,7 @@ export function TaxPage() {
               jurisdiction={j}
               profileJurisdictionIds={currentProfile.jurisdiction_ids}
               onToggle={toggleJurisdiction}
+              accountId={account?.id ?? ''}
             />
           ))
         )}

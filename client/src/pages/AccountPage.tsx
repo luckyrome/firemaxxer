@@ -12,6 +12,18 @@ async function changePassword(currentPassword: string, newPassword: string): Pro
   });
 }
 
+async function downloadExcel(): Promise<void> {
+  const res = await fetch('/api/export/excel', { credentials: 'include' });
+  if (!res.ok) throw new Error('Export failed');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `firemaxxer-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AccountPage() {
   const { account, logout } = useAuth();
   const { addToast } = useToast();
@@ -22,10 +34,25 @@ export function AccountPage() {
   const [confirm, setConfirm] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
 
+  // Export
+  const [exporting, setExporting] = useState(false);
+
   // Delete account
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await downloadExcel();
+      addToast('Export downloaded', 'success');
+    } catch {
+      addToast('Export failed', 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -111,6 +138,21 @@ export function AccountPage() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* Export */}
+      <div className="section-card">
+        <div className="section-header"><h2>Export Data</h2></div>
+        <p className="muted" style={{ marginBottom: 12 }}>
+          Download all your data as a formatted Excel workbook — net worth, income, expenses, tax brackets, FIRE settings, and refi scenarios.
+        </p>
+        <button
+          className="btn btn-primary"
+          onClick={handleExport}
+          disabled={exporting}
+        >
+          {exporting ? 'Generating…' : 'Download Excel (.xlsx)'}
+        </button>
       </div>
 
       {/* Danger zone */}

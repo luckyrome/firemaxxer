@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, ReferenceLine,
+} from 'recharts';
 import { getSettings, updateSettings } from '../api/settings';
 import { getFireResult } from '../api/refi';
 import { getExpenseSnapshots } from '../api/expenses';
 import { getNetWorth } from '../api/assets';
 import { PageHelp } from '../components/HelpDialog';
-import type { FireConfig, FireTargetResult, RetirementWithdrawal, BracketDetail, RetirementJurisdictionTax } from '../types';
+import type { FireConfig, FireTargetResult, RetirementWithdrawal, BracketDetail, RetirementJurisdictionTax, NetWorthPoint, LiabilityWithLatest } from '../types';
+import { getLiabilities } from '../api/assets';
 
 function fmtMoney(v: number) {
   return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -225,6 +230,294 @@ function BracketTable({ details, label }: { details: BracketDetail[]; label: str
   );
 }
 
+// ── Projection chart ──────────────────────────────────────────────────────────
+
+interface MortgageData {
+  balance: number;
+  monthlyRate: number;
+  monthlyPayment: number;
+}
+
+interface ChartPoint {
+  ts: number;
+  assets?: number;
+  liabilities?: number;
+  netWorth?: number;
+  projAssets?: number;
+  projLiabilities?: number;
+  projNetWorth?: number;
+}
+
+function computeMonthlyPayment(origBalance: number, monthlyRate: number, termMonths: number): number {
+  if (monthlyRate === 0 || termMonths === 0) return origBalance / Math.max(termMonths, 1);
+  const r = monthlyRate;
+  const n = termMonths;
+  return (origBalance * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+}
+
+function parseMortgages(liabilities: LiabilityWithLatest[]): MortgageData[] {
+  return liabilities
+    .filter(l => l.type === 'mortgage' && l.latest_balance !== null && parseFloat(l.latest_balance!) > 0)
+    .map(l => {
+      const balance      = parseFloat(l.latest_balance!);
+      const monthlyRate  = parseFloat(l.interest_rate) / 12;
+      const origBalance  = l.original_balance ? parseFloat(l.original_balance) : balance;
+      const termMonths   = l.term_months ?? 360;
+      const monthlyPayment = computeMonthlyPayment(origBalance, monthlyRate, termMonths);
+      return { balance, monthlyRate, monthlyPayment };
+    });
+}
+
+function buildChartData(
+  history: NetWorthPoint[],
+  startAssets: number,
+  startLiabilities: number,
+  annualGrowthRate: number,
+  baseSurplus: number,
+  mortgages: MortgageData[],
+  projectionYears: number,
+): ChartPoint[] {
+  const points: ChartPoint[] = history.map(h => ({
+    ts: new Date(h.date + 'T00:00:00').getTime(),
+    assets: h.totalAssets,
+    liabilities: h.totalLiabilities,
+    netWorth: h.netWorth,
+  }));
+
+  const startDate = history.length > 0
+    ? new Date(history[history.length - 1].date + 'T00:00:00')
+    : new Date();
+
+  // Seed the projection anchor at the last historical point
+  const anchorPoint: ChartPoint = { ts: startDate.getTime(), projAssets: startAssets, projLiabilities: startLiabilities, projNetWorth: startAssets - startLiabilities };
+  if (points.length > 0) {
+    Object.assign(points[points.length - 1], anchorPoint);
+  } else {
+    points.push(anchorPoint);
+  }
+
+  // Monthly simulation: mortgage payments come out of the surplus stream
+  const monthlyGrowthRate = annualGrowthRate / 12;
+  const mortBalances      = mortgages.map(m => m.balance);
+  // effective surplus = baseSurplus minus all active mortgage payments (which reduce liabilities)
+  let effectiveSurplus    = baseSurplus - mortgages.reduce((s, m) => s + m.monthlyPayment, 0);
+  let investmentAssets    = startAssets;
+
+  for (let year = 1; year <= projectionYears; year++) {
+    for (let mo = 0; mo < 12; mo++) {
+      // Invest the net surplus into assets
+      investmentAssets = investmentAssets * (1 + monthlyGrowthRate) + effectiveSurplus;
+
+      // Amortize each mortgage; free the payment once paid off
+      for (let i = 0; i < mortgages.length; i++) {
+        if (mortBalances[i] <= 0) continue;
+        const { monthlyRate, monthlyPayment } = mortgages[i];
+        const interest  = mortBalances[i] * monthlyRate;
+        const principal = Math.min(monthlyPayment - interest, mortBalances[i]);
+        mortBalances[i] = Math.max(0, mortBalances[i] - principal);
+        if (mortBalances[i] === 0) {
+          // Mortgage paid off — freed payment now goes to investment/reduces drawdown
+          effectiveSurplus += monthlyPayment;
+        }
+      }
+    }
+
+    const totalLiabilities = mortBalances.reduce((s, b) => s + b, 0);
+    const d = new Date(startDate);
+    d.setFullYear(d.getFullYear() + year);
+    points.push({
+      ts:               d.getTime(),
+      projAssets:       investmentAssets,
+      projLiabilities:  totalLiabilities,
+      projNetWorth:     investmentAssets - totalLiabilities,
+    });
+  }
+
+  return points;
+}
+
+function yTick(v: number) {
+  if (Math.abs(v) >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1) + 'M';
+  if (Math.abs(v) >= 1_000)     return '$' + (v / 1_000).toFixed(0) + 'k';
+  return '$' + v.toFixed(0);
+}
+
+const PROJ_SERIES = [
+  { key: 'assets',      label: 'Assets',      color: 'var(--green)' },
+  { key: 'liabilities', label: 'Liabilities', color: 'var(--red)'   },
+  { key: 'netWorth',    label: 'Net Worth',    color: 'var(--blue)'  },
+] as const;
+type SeriesKey = typeof PROJ_SERIES[number]['key'];
+
+function FireProjectionChart({
+  history,
+  existingAssets,
+  monthlyIncome,
+  monthlyExpenses,
+  monthlyRetiredExpenses,
+  assumedGrowthRate,
+  fiTarget,
+  liabilities,
+}: {
+  history: NetWorthPoint[];
+  existingAssets: number;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  monthlyRetiredExpenses: number;
+  assumedGrowthRate: number;
+  fiTarget: number;
+  liabilities: LiabilityWithLatest[];
+}) {
+  const [includeIncome,    setIncludeIncome]    = useState(true);
+  const [projectionYears,  setProjectionYears]  = useState<10 | 20 | 30>(10);
+  const [hiddenSeries,     setHiddenSeries]     = useState<Set<SeriesKey>>(new Set());
+
+  function toggleSeries(key: SeriesKey) {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
+
+  const mortgages = parseMortgages(liabilities);
+
+  const lastHistory    = history.length > 0 ? history[history.length - 1] : null;
+  const totalMortgagePmt = mortgages.reduce((s, m) => s + m.monthlyPayment, 0);
+
+  // Start assets/liabilities from last history point; if none, derive from net worth + mortgage balances
+  const totalMortgageBal = mortgages.reduce((s, m) => s + m.balance, 0);
+  const startLiabilities = lastHistory?.totalLiabilities ?? totalMortgageBal;
+  const startAssets      = lastHistory?.totalAssets      ?? (existingAssets + startLiabilities);
+
+  // baseSurplus excludes mortgage payments (modeled separately via amortization)
+  const baseSurplus = includeIncome
+    ? monthlyIncome - monthlyExpenses
+    : -(monthlyRetiredExpenses > 0 ? monthlyRetiredExpenses : monthlyExpenses);
+
+  const data = buildChartData(history, startAssets, startLiabilities, assumedGrowthRate, baseSurplus, mortgages, projectionYears);
+  const hasHistory = history.length > 0;
+
+  const subtitle = includeIncome
+    ? `+${fmtMoney(monthlyIncome - monthlyExpenses)}/mo surplus invested`
+    : `−${fmtMoney(monthlyRetiredExpenses > 0 ? monthlyRetiredExpenses : monthlyExpenses)}/mo drawdown`;
+  const mortgageNote = totalMortgagePmt > 0
+    ? ` · ${fmtMoney(totalMortgagePmt)}/mo mortgage P&I amortized separately`
+    : '';
+
+  return (
+    <div className="section-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Net Worth &amp; {projectionYears}-Year Projection</h2>
+          <div className="muted" style={{ fontSize: '0.72rem', marginTop: 2 }}>
+            {fmtPct(assumedGrowthRate)} annual growth · {subtitle}{mortgageNote}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {([10, 20, 30] as const).map(y => (
+              <button
+                key={y}
+                className={`btn${projectionYears === y ? ' btn-primary' : ''}`}
+                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                onClick={() => setProjectionYears(y)}
+              >{y}yr</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              className={`btn${includeIncome ? ' btn-primary' : ''}`}
+              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+              onClick={() => setIncludeIncome(true)}
+            >
+              With income
+            </button>
+            <button
+              className={`btn${!includeIncome ? ' btn-primary' : ''}`}
+              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+              onClick={() => setIncludeIncome(false)}
+            >
+              Retired now
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={320}>
+        <LineChart data={data} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <XAxis
+            dataKey="ts"
+            type="number"
+            domain={['auto', 'auto']}
+            scale="time"
+            tickFormatter={(ts: number) => new Date(ts).getFullYear().toString()}
+            tick={{ fontSize: 11, fill: 'var(--fg-muted)' }}
+          />
+          <YAxis
+            tickFormatter={yTick}
+            tick={{ fontSize: 11, fill: 'var(--fg-muted)' }}
+            width={72}
+          />
+          <Tooltip
+            labelFormatter={(ts) =>
+              new Date(ts as number).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            }
+            formatter={(v, name) => [fmtMoney(v as number), name as string]}
+            contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+            labelStyle={{ color: 'var(--fg-muted)' }}
+          />
+          <Legend
+            content={() => (
+              <div style={{ display: 'flex', gap: 20, justifyContent: 'center', paddingTop: 10, fontSize: 12, flexWrap: 'wrap' }}>
+                {PROJ_SERIES.map(s => (
+                  <div
+                    key={s.key}
+                    onClick={() => toggleSeries(s.key)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      cursor: 'pointer', userSelect: 'none',
+                      opacity: hiddenSeries.has(s.key) ? 0.3 : 1,
+                    }}
+                  >
+                    <svg width="26" height="10" style={{ flexShrink: 0 }}>
+                      <line x1="0" y1="5" x2="12" y2="5" stroke={s.color} strokeWidth="2.5" />
+                      <line x1="14" y1="5" x2="20" y2="5" stroke={s.color} strokeWidth="2.5" strokeDasharray="4 2" />
+                    </svg>
+                    <span style={{ color: 'var(--fg-muted)' }}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          />
+
+          {hasHistory && <>
+            <Line type="monotone" dataKey="assets"      stroke="var(--green)" strokeWidth={2} dot={false} connectNulls={false} legendType="none" hide={hiddenSeries.has('assets')} />
+            <Line type="monotone" dataKey="liabilities" stroke="var(--red)"   strokeWidth={2} dot={false} connectNulls={false} legendType="none" hide={hiddenSeries.has('liabilities')} />
+            <Line type="monotone" dataKey="netWorth"    stroke="var(--blue)"  strokeWidth={2} dot={false} connectNulls={false} legendType="none" hide={hiddenSeries.has('netWorth')} />
+          </>}
+
+          <Line type="monotone" dataKey="projAssets"      stroke="var(--green)" strokeWidth={2} strokeDasharray="6 3" dot={false} connectNulls={false} legendType="none" hide={hiddenSeries.has('assets')} />
+          <Line type="monotone" dataKey="projLiabilities" stroke="var(--red)"   strokeWidth={2} strokeDasharray="6 3" dot={false} connectNulls={false} legendType="none" hide={hiddenSeries.has('liabilities')} />
+          <Line type="monotone" dataKey="projNetWorth"    stroke="var(--blue)"  strokeWidth={2} strokeDasharray="6 3" dot={false} connectNulls={false} legendType="none" hide={hiddenSeries.has('netWorth')} />
+
+          {fiTarget > 0 && (
+            <ReferenceLine
+              y={fiTarget}
+              stroke="var(--green)"
+              strokeDasharray="4 4"
+              label={{ value: `FI ${yTick(fiTarget)}`, position: 'insideTopRight', fill: 'var(--green)', fontSize: 11 }}
+            />
+          )}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// ── Settings field ─────────────────────────────────────────────────────────────
+
 function NumField({ label, name, value, onChange, pct }: {
   label: string; name: keyof FireConfig; value: number; onChange: (k: keyof FireConfig, v: number) => void; pct?: boolean;
 }) {
@@ -248,10 +541,11 @@ export function FirePage() {
   const [editing, setEditing] = useState(false);
   const [draft,   setDraft]   = useState<Partial<FireConfig>>({});
 
-  const { data: config,    isLoading: configLoading }  = useQuery({ queryKey: ['settings'],    queryFn: getSettings });
-  const { data: result,    isLoading: resultLoading }  = useQuery({ queryKey: ['fire-result'], queryFn: getFireResult });
-  const { data: snapshots = [] }                        = useQuery({ queryKey: ['expense-snapshots'], queryFn: getExpenseSnapshots });
-  const { data: netWorthHistory = [] }                  = useQuery({ queryKey: ['net-worth'],   queryFn: getNetWorth });
+  const { data: config,         isLoading: configLoading } = useQuery({ queryKey: ['settings'],     queryFn: getSettings });
+  const { data: result,         isLoading: resultLoading } = useQuery({ queryKey: ['fire-result'],  queryFn: getFireResult });
+  const { data: snapshots = [] }                           = useQuery({ queryKey: ['expense-snapshots'], queryFn: getExpenseSnapshots });
+  const { data: netWorthHistory = [] }                     = useQuery({ queryKey: ['net-worth'],    queryFn: getNetWorth });
+  const { data: liabilities = [] }                         = useQuery({ queryKey: ['liabilities'],  queryFn: getLiabilities });
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -391,6 +685,18 @@ export function FirePage() {
               </div>
             </div>
           </div>
+
+          {/* Projection chart */}
+          <FireProjectionChart
+            history={netWorthHistory}
+            existingAssets={result.existingAssets}
+            monthlyIncome={result.monthlyIncome}
+            monthlyExpenses={result.monthlyExpenses}
+            monthlyRetiredExpenses={result.monthlyRetiredExpenses}
+            assumedGrowthRate={config?.assumedGrowthRate ?? 0.04}
+            fiTarget={result.targetSwr?.balance ?? 0}
+            liabilities={liabilities}
+          />
 
           {/* FI Targets */}
           <div className="section-card">

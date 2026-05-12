@@ -17,6 +17,7 @@ import { settingsRouter } from './routes/settings';
 import { fireRouter } from './routes/fire';
 import { refiRouter } from './routes/refi';
 import { taxRouter } from './routes/tax';
+import { exportRouter } from './routes/export';
 
 export const app = express();
 
@@ -58,6 +59,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/fire', fireRouter);
 app.use('/api/refi', refiRouter);
 app.use('/api/tax', taxRouter);
+app.use('/api/export', exportRouter);
 
 app.use(errorHandler);
 

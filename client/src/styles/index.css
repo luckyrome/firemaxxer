@@ -33,6 +33,7 @@
   --shadow-dialog: 0 16px 48px rgba(0,0,0,0.6);
 
   --tag-green-bg: rgba(63,185,80,.15);
+  --tag-red-bg:   rgba(248,81,73,.12);
   --tag-blue-bg:  rgba(88,166,255,.12);
 
   --sidebar-width: 220px;
@@ -73,6 +74,7 @@
   --shadow-dialog: 0 16px 48px rgba(0,0,0,0.12);
 
   --tag-green-bg: rgba(26,127,55,.1);
+  --tag-red-bg:   rgba(207,34,46,.08);
   --tag-blue-bg:  rgba(9,105,218,.08);
 }
 
