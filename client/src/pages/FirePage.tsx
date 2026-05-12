@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSettings, updateSettings } from '../api/settings';
 import { getFireResult } from '../api/refi';
 import { getExpenseSnapshots } from '../api/expenses';
+import { getNetWorth } from '../api/assets';
+import { PageHelp } from '../components/HelpDialog';
 import type { FireConfig, FireTargetResult, RetirementWithdrawal, BracketDetail, RetirementJurisdictionTax } from '../types';
 
 function fmtMoney(v: number) {
@@ -249,6 +251,7 @@ export function FirePage() {
   const { data: config,    isLoading: configLoading }  = useQuery({ queryKey: ['settings'],    queryFn: getSettings });
   const { data: result,    isLoading: resultLoading }  = useQuery({ queryKey: ['fire-result'], queryFn: getFireResult });
   const { data: snapshots = [] }                        = useQuery({ queryKey: ['expense-snapshots'], queryFn: getExpenseSnapshots });
+  const { data: netWorthHistory = [] }                  = useQuery({ queryKey: ['net-worth'],   queryFn: getNetWorth });
 
   const saveMutation = useMutation({
     mutationFn: updateSettings,
@@ -276,22 +279,105 @@ export function FirePage() {
 
   const tax = result?.taxDetails;
   const noTaxConfigured = tax && tax.jurisdictions.length === 0;
+  const latestNetWorth = netWorthHistory.length > 0 ? netWorthHistory[netWorthHistory.length - 1] : null;
+  const surplus = result ? result.monthlyIncome - result.monthlyExpenses : 0;
 
   return (
     <div className="page">
       <div className="page-header">
-        <h1>FIRE Dashboard</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Dashboard</h1>
+          <PageHelp page="dashboard" />
+        </div>
         {!editing && (
           <button className="btn btn-primary" onClick={startEdit}>Edit Settings</button>
         )}
       </div>
+
+      {/* ── Settings form ────────────────────────────────────────────────── */}
+      {editing && cfg && (
+        <form onSubmit={e => { e.preventDefault(); saveMutation.mutate(draft); }}>
+          <div className="section-card">
+            <div className="section-header"><h2>Pre-Tax Deductions &amp; Special Income</h2></div>
+            <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 10 }}>
+              Salary, bonus, and RSU income is sourced from the <Link to="/income" style={{ color: 'var(--blue)' }}>Income</Link> page.
+              Configure tax brackets on the <Link to="/tax" style={{ color: 'var(--blue)' }}>Tax Brackets</Link> page.
+            </p>
+            <div className="form-grid">
+              <NumField label="401(k) Annual Contribution" name="k401Annual"             value={cfg.k401Annual ?? 0}             onChange={setField} />
+              <NumField label="Medical Deduction Annual"   name="medicalDeductionAnnual" value={cfg.medicalDeductionAnnual ?? 0} onChange={setField} />
+              <NumField label="ESPP Quarterly Gain (LT)"  name="esppQuarterlyGain"       value={cfg.esppQuarterlyGain ?? 0}     onChange={setField} />
+            </div>
+          </div>
+
+          <div className="section-card">
+            <div className="section-header"><h2>FIRE Parameters</h2></div>
+            <div className="form-grid">
+              <NumField label="Safe Withdrawal Rate (%)"           name="safeWithdrawalRate"        value={cfg.safeWithdrawalRate ?? 0.04}   onChange={setField} pct />
+              <NumField label="Assumed Annual Growth Rate (%)"     name="assumedGrowthRate"          value={cfg.assumedGrowthRate ?? 0.04}    onChange={setField} pct />
+              <NumField label="Target Retirement Annual Income"    name="retirementAnnualIncome"     value={cfg.retirementAnnualIncome ?? 0}  onChange={setField} />
+              <NumField label="Explicit FI Target ($, optional)"  name="fiExplicitTarget"           value={cfg.fiExplicitTarget ?? 0}        onChange={setField} />
+              <label className="field">
+                Retirement Withdrawal Type
+                <select
+                  value={cfg.retirementWithdrawalType ?? 'long_term_gains'}
+                  onChange={e => setDraft(d => ({ ...d, retirementWithdrawalType: e.target.value as 'long_term_gains' | 'ordinary' }))}
+                >
+                  <option value="long_term_gains">Long-Term Capital Gains</option>
+                  <option value="ordinary">Ordinary Income (e.g. 401k withdrawals)</option>
+                </select>
+              </label>
+              <label className="field">
+                Active Expense Snapshot
+                <select
+                  value={cfg.activeExpenseSnapshotId ?? ''}
+                  onChange={e => setField('activeExpenseSnapshotId', e.target.value || null)}
+                >
+                  <option value="">— none —</option>
+                  {snapshots.filter(s => !s.is_retirement_plan).map(s => (
+                    <option key={s.id} value={s.id}>{s.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                Retirement Expense Snapshot
+                <select
+                  value={cfg.retiredExpenseSnapshotId ?? ''}
+                  onChange={e => setField('retiredExpenseSnapshotId', e.target.value || null)}
+                >
+                  <option value="">— none —</option>
+                  {snapshots.map(s => (
+                    <option key={s.id} value={s.id}>{s.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginBottom: 20 }}>
+            <button type="button" className="btn" onClick={() => { setEditing(false); setDraft({}); }}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Saving…' : 'Save Settings'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* ── Result cards ────────────────────────────────────────────────── */}
       {result && !resultLoading && (
         <>
           <div className="summary-cards">
             <div className="summary-card">
-              <div className="summary-card-label">Monthly Net Income</div>
+              <div className="summary-card-label">Net Worth</div>
+              <div className={`summary-card-value ${result.existingAssets >= 0 ? 'green' : 'red'}`}>
+                {fmtMoney(result.existingAssets)}
+              </div>
+              {latestNetWorth && (
+                <div style={{ fontSize: '0.72rem', color: 'var(--fg-subtle)', marginTop: 4 }}>as of {latestNetWorth.date}</div>
+              )}
+            </div>
+            <div className="summary-card">
+              <div className="summary-card-label">Monthly Income (net)</div>
               <div className="summary-card-value green">{fmtMoney(result.monthlyIncome)}</div>
             </div>
             <div className="summary-card">
@@ -299,14 +385,10 @@ export function FirePage() {
               <div className="summary-card-value red">{fmtMoney(result.monthlyExpenses)}</div>
             </div>
             <div className="summary-card">
-              <div className="summary-card-label">Net Worth</div>
-              <div className={`summary-card-value ${result.existingAssets >= 0 ? 'green' : 'red'}`}>
-                {fmtMoney(result.existingAssets)}
+              <div className="summary-card-label">Monthly Surplus</div>
+              <div className={`summary-card-value ${surplus >= 0 ? 'green' : 'red'}`}>
+                {(surplus >= 0 ? '+' : '−') + fmtMoney(surplus)}
               </div>
-            </div>
-            <div className="summary-card">
-              <div className="summary-card-label">FI Target</div>
-              <div className="summary-card-value blue">{fmtMoney(result.fiBalance)}</div>
             </div>
           </div>
 
@@ -465,79 +547,11 @@ export function FirePage() {
         </>
       )}
 
-      {/* ── Settings form ────────────────────────────────────────────────── */}
-      {editing && cfg && (
-        <form onSubmit={e => { e.preventDefault(); saveMutation.mutate(draft); }}>
-          <div className="section-card">
-            <div className="section-header"><h2>Pre-Tax Deductions &amp; Special Income</h2></div>
-            <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 10 }}>
-              Salary, bonus, and RSU income is sourced from the <Link to="/income" style={{ color: 'var(--blue)' }}>Income</Link> page.
-              Configure tax brackets on the <Link to="/tax" style={{ color: 'var(--blue)' }}>Tax Brackets</Link> page.
-            </p>
-            <div className="form-grid">
-              <NumField label="401(k) Annual Contribution" name="k401Annual"             value={cfg.k401Annual ?? 0}             onChange={setField} />
-              <NumField label="Medical Deduction Annual"   name="medicalDeductionAnnual" value={cfg.medicalDeductionAnnual ?? 0} onChange={setField} />
-              <NumField label="ESPP Quarterly Gain (LT)"  name="esppQuarterlyGain"       value={cfg.esppQuarterlyGain ?? 0}     onChange={setField} />
-            </div>
-          </div>
-
-          <div className="section-card">
-            <div className="section-header"><h2>FIRE Parameters</h2></div>
-            <div className="form-grid">
-              <NumField label="Safe Withdrawal Rate (%)"           name="safeWithdrawalRate"        value={cfg.safeWithdrawalRate ?? 0.04}   onChange={setField} pct />
-              <NumField label="Assumed Annual Growth Rate (%)"     name="assumedGrowthRate"          value={cfg.assumedGrowthRate ?? 0.04}    onChange={setField} pct />
-              <NumField label="Target Retirement Annual Income"    name="retirementAnnualIncome"     value={cfg.retirementAnnualIncome ?? 0}  onChange={setField} />
-              <NumField label="Explicit FI Target ($, optional)"  name="fiExplicitTarget"           value={cfg.fiExplicitTarget ?? 0}        onChange={setField} />
-              <label className="field">
-                Retirement Withdrawal Type
-                <select
-                  value={cfg.retirementWithdrawalType ?? 'long_term_gains'}
-                  onChange={e => setDraft(d => ({ ...d, retirementWithdrawalType: e.target.value as 'long_term_gains' | 'ordinary' }))}
-                >
-                  <option value="long_term_gains">Long-Term Capital Gains</option>
-                  <option value="ordinary">Ordinary Income (e.g. 401k withdrawals)</option>
-                </select>
-              </label>
-              <label className="field">
-                Active Expense Snapshot
-                <select
-                  value={cfg.activeExpenseSnapshotId ?? ''}
-                  onChange={e => setField('activeExpenseSnapshotId', e.target.value || null)}
-                >
-                  <option value="">— none —</option>
-                  {snapshots.filter(s => !s.is_retirement_plan).map(s => (
-                    <option key={s.id} value={s.id}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                Retirement Expense Snapshot
-                <select
-                  value={cfg.retiredExpenseSnapshotId ?? ''}
-                  onChange={e => setField('retiredExpenseSnapshotId', e.target.value || null)}
-                >
-                  <option value="">— none —</option>
-                  {snapshots.map(s => (
-                    <option key={s.id} value={s.id}>{s.label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginBottom: 20 }}>
-            <button type="button" className="btn" onClick={() => { setEditing(false); setDraft({}); }}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? 'Saving…' : 'Save Settings'}
-            </button>
-          </div>
-        </form>
-      )}
-
       {!editing && !result && !resultLoading && (
-        <div className="empty-state">
-          <p>Configure your FIRE settings to see your feasibility analysis.</p>
-          <button className="btn btn-primary" onClick={startEdit}>Set Up FIRE Settings</button>
+        <div className="empty-state" style={{ paddingTop: 80 }}>
+          <p style={{ fontSize: '1rem', color: 'var(--fg-sec)', marginBottom: 6 }}>Welcome to Firemaxxer</p>
+          <p style={{ marginBottom: 20 }}>Configure your settings to see your FIRE feasibility summary.</p>
+          <button className="btn btn-primary" onClick={startEdit}>Set Up Settings</button>
         </div>
       )}
     </div>

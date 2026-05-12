@@ -22,10 +22,11 @@ const analysisSchema = z.object({
 });
 
 const scenarioSchema = z.object({
-  label:      z.string().min(1).max(80),
-  term_years: z.number().int().min(1).max(50),
-  annual_rate: z.number().min(0).max(1),
-  sort_order: z.number().int().min(0).optional(),
+  label:           z.string().min(1).max(80),
+  term_years:      z.number().int().min(1).max(50),
+  annual_rate:     z.number().min(0).max(1),
+  origination_fee: z.number().min(0).default(0),
+  sort_order:      z.number().int().min(0).optional(),
 });
 
 // ── Analyses ───────────────────────────────────────────────────────────────────
@@ -77,7 +78,7 @@ refiRouter.post('/:id/scenarios', async (req, res) => {
   const b = scenarioSchema.parse(req.body);
   const scenarios = await listScenarios(req.params.id);
   const sortOrder = b.sort_order ?? scenarios.length;
-  const scenario = await createScenario(req.params.id, b.label, b.term_years, b.annual_rate, sortOrder);
+  const scenario = await createScenario(req.params.id, b.label, b.term_years, b.annual_rate, b.origination_fee, sortOrder);
   res.status(201).json(scenario);
 });
 
@@ -85,7 +86,7 @@ refiRouter.put('/:id/scenarios/:scenarioId', async (req, res) => {
   const analysis = await findAnalysisById(req.params.id, req.account!.id);
   if (!analysis) throw new NotFoundError('Analysis not found');
   const b = scenarioSchema.parse(req.body);
-  const updated = await updateScenario(req.params.scenarioId, b.label, b.term_years, b.annual_rate);
+  const updated = await updateScenario(req.params.scenarioId, b.label, b.term_years, b.annual_rate, b.origination_fee);
   if (!updated) throw new NotFoundError('Scenario not found');
   res.json(updated);
 });

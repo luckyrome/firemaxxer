@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getIncome, createIncomeSource, updateIncomeSource, deleteIncomeSource } from '../api/income';
+import { PageHelp } from '../components/HelpDialog';
 import type { IncomeSource, IncomeFrequency } from '../types';
 
 const FREQ_LABELS: Record<IncomeFrequency, string> = {
@@ -128,7 +129,10 @@ export function IncomePage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Income</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Income</h1>
+          <PageHelp page="income" />
+        </div>
         <button className="btn btn-primary" onClick={() => setModal('new')}>+ Add Source</button>
       </div>
 
@@ -155,7 +159,7 @@ export function IncomePage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th><th>Frequency</th><th>Amount</th><th>Monthly</th><th>Annual</th><th>Taxable</th><th>Status</th><th></th>
+                <th>Name</th><th>Frequency</th><th className="num">Amount</th><th className="num">Monthly</th><th className="num">Annual</th><th>Taxable</th><th>Status</th><th></th>
               </tr>
             </thead>
             <tbody>

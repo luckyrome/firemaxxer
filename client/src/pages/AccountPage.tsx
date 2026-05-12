@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../api/client';
 import { deleteAccount } from '../api/auth';
+import { PageHelp } from '../components/HelpDialog';
 
 async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   await apiFetch('/api/auth/change-password', {
@@ -57,7 +58,10 @@ export function AccountPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Account</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Account</h1>
+          <PageHelp page="account" />
+        </div>
       </div>
 
       {/* Account info */}

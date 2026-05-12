@@ -20,6 +20,7 @@ export interface RefiScenario {
   label: string;
   term_years: number;
   annual_rate: string;
+  origination_fee: string;
   sort_order: number;
   created_at: Date;
 }
@@ -99,12 +100,13 @@ export async function createScenario(
   label: string,
   termYears: number,
   annualRate: number,
+  originationFee: number,
   sortOrder: number,
 ): Promise<RefiScenario> {
   const { rows } = await query<RefiScenario>(
-    `INSERT INTO refi_scenarios (analysis_id, label, term_years, annual_rate, sort_order)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-    [analysisId, label, termYears, annualRate, sortOrder],
+    `INSERT INTO refi_scenarios (analysis_id, label, term_years, annual_rate, origination_fee, sort_order)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+    [analysisId, label, termYears, annualRate, originationFee, sortOrder],
   );
   return rows[0];
 }
@@ -114,10 +116,11 @@ export async function updateScenario(
   label: string,
   termYears: number,
   annualRate: number,
+  originationFee: number,
 ): Promise<RefiScenario | null> {
   const { rows } = await query<RefiScenario>(
-    `UPDATE refi_scenarios SET label=$2, term_years=$3, annual_rate=$4 WHERE id=$1 RETURNING *`,
-    [id, label, termYears, annualRate],
+    `UPDATE refi_scenarios SET label=$2, term_years=$3, annual_rate=$4, origination_fee=$5 WHERE id=$1 RETURNING *`,
+    [id, label, termYears, annualRate, originationFee],
   );
   return rows[0] ?? null;
 }

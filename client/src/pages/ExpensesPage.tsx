@@ -5,6 +5,7 @@ import {
   deleteExpenseSnapshot, cloneExpenseSnapshot, getExpenseItems,
   createExpenseItem, updateExpenseItem, deleteExpenseItem, bulkAddExpenseItems,
 } from '../api/expenses';
+import { PageHelp } from '../components/HelpDialog';
 import type { ExpenseSnapshot, ExpenseItem, ExpenseFrequency } from '../types';
 
 const FREQ_LABELS: Record<ExpenseFrequency, string> = {
@@ -249,7 +250,7 @@ function ExpenseImporter({ snapshotId, onImported }: { snapshotId: string; onImp
           {parsed.rows.length > 0 && (
             <table className="data-table" style={{ fontSize: '0.75rem' }}>
               <thead>
-                <tr><th>Name</th><th>Category</th><th>Amount</th><th>Freq</th><th>Owner</th><th>Critical</th></tr>
+                <tr><th>Name</th><th>Category</th><th className="num">Amount</th><th>Freq</th><th>Owner</th><th>Critical</th></tr>
               </thead>
               <tbody>
                 {parsed.rows.slice(0, 10).map((r, i) => (
@@ -454,8 +455,8 @@ function SnapshotDetail({ snapshot }: { snapshot: ExpenseSnapshot }) {
                 <thead>
                   <tr>
                     <th>Name</th><th>Owner</th><th>Freq</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
-                    <th style={{ textAlign: 'right' }}>Monthly</th>
+                    <th className="num">Amount</th>
+                    <th className="num">Monthly</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -535,7 +536,10 @@ export function ExpensesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Expenses</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Expenses</h1>
+          <PageHelp page="expenses" />
+        </div>
         <button className="btn btn-primary" onClick={() => setSnapModal('new')}>+ New Snapshot</button>
       </div>
 

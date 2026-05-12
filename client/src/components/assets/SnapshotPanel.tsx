@@ -138,8 +138,12 @@ function PasteImporter({
 
 // ── Add single row ────────────────────────────────────────────────────────────
 
+function todayLocal() {
+  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in device timezone
+}
+
 function AddRow({ valueLabel, onAdd }: { valueLabel: string; onAdd: (date: string, amount: number) => Promise<void> }) {
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(todayLocal);
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -150,7 +154,7 @@ function AddRow({ valueLabel, onAdd }: { valueLabel: string; onAdd: (date: strin
     setLoading(true);
     try {
       await onAdd(date, parseFloat(amount));
-      setDate('');
+      setDate(todayLocal());
       setAmount('');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to add');
@@ -289,10 +293,11 @@ export function AssetSnapshotPanel({ assetId }: { assetId: string }) {
 
   return (
     <div className="snapshot-panel">
+      <AddRow valueLabel="Value" onAdd={handleAdd} />
       {isLoading ? <p className="muted">Loading…</p> : snapshots.length === 0 ? (
-        <p className="muted" style={{ paddingBottom: 8 }}>No snapshots yet.</p>
+        <p className="muted" style={{ paddingTop: 8 }}>No snapshots yet.</p>
       ) : (
-        <table>
+        <table style={{ marginTop: 10 }}>
           <thead><tr><th>Date</th><th>Value</th><th></th></tr></thead>
           <tbody>
             {(snapshots as AssetSnapshot[]).map((s) => (
@@ -305,7 +310,6 @@ export function AssetSnapshotPanel({ assetId }: { assetId: string }) {
           </tbody>
         </table>
       )}
-      <AddRow valueLabel="Value" onAdd={handleAdd} />
       <PasteImporter valueLabel="Value" onImport={handleBulk} />
     </div>
   );
@@ -455,11 +459,11 @@ export function LiabilitySnapshotPanel({ liability }: { liability: LiabilityWith
   return (
     <div className="snapshot-panel">
       <LoanDetailsCard liability={liability} />
-
+      <AddRow valueLabel="Balance" onAdd={handleAdd} />
       {isLoading ? <p className="muted">Loading…</p> : snapshots.length === 0 ? (
-        <p className="muted" style={{ paddingBottom: 8 }}>No balance history yet.</p>
+        <p className="muted" style={{ paddingTop: 8 }}>No balance history yet.</p>
       ) : (
-        <table>
+        <table style={{ marginTop: 10 }}>
           <thead><tr><th>Date</th><th>Balance</th><th></th></tr></thead>
           <tbody>
             {(snapshots as LiabilitySnapshot[]).map((s) => (
@@ -472,7 +476,6 @@ export function LiabilitySnapshotPanel({ liability }: { liability: LiabilityWith
           </tbody>
         </table>
       )}
-      <AddRow valueLabel="Balance" onAdd={handleAdd} />
       <PasteImporter valueLabel="Balance" onImport={handleBulk} />
       <GenerateFromLoan liability={liability} hasSnapshots={hasSnapshots} onGenerated={invalidate} />
     </div>

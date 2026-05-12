@@ -7,6 +7,7 @@ import { getAssets, deleteAsset, getLiabilities, deleteLiability, getNetWorth } 
 import { AssetModal } from '../components/assets/AssetModal';
 import { LiabilityModal } from '../components/assets/LiabilityModal';
 import { AssetSnapshotPanel, LiabilitySnapshotPanel } from '../components/assets/SnapshotPanel';
+import { PageHelp } from '../components/HelpDialog';
 import type { AssetWithLatest, LiabilityWithLatest, Asset, Liability } from '../types';
 
 const ASSET_TYPE_LABELS: Record<string, string> = {
@@ -90,7 +91,10 @@ export function AssetsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Assets &amp; Liabilities</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Assets &amp; Liabilities</h1>
+          <PageHelp page="assets" />
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -144,7 +148,7 @@ export function AssetsPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th><th>Type</th><th>Latest Value</th><th>Date</th><th></th>
+                <th>Name</th><th>Type</th><th className="num">Latest Value</th><th>Date</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -195,7 +199,7 @@ export function AssetsPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th><th>Type</th><th>Rate</th><th>Latest Balance</th><th>Linked Asset</th><th></th>
+                <th>Name</th><th>Type</th><th className="num">Rate</th><th className="num">Latest Balance</th><th>Linked Asset</th><th></th>
               </tr>
             </thead>
             <tbody>

@@ -5,6 +5,7 @@ import {
   getBracketSets, upsertBracketSet, deleteBracketSet,
   getTaxProfile, saveTaxProfile,
 } from '../api/tax';
+import { PageHelp } from '../components/HelpDialog';
 import type {
   TaxJurisdiction, TaxBracketSet, TaxProfile,
   JurisdictionType, IncomeType, FilingStatus,
@@ -237,7 +238,7 @@ function JurisdictionSection({
                 </div>
                 <table className="data-table" style={{ marginBottom: 0, fontSize: '0.75rem' }}>
                   <thead>
-                    <tr><th>Income Floor</th><th>Rate</th></tr>
+                    <tr><th className="num">Income Floor</th><th className="num">Rate</th></tr>
                   </thead>
                   <tbody>
                     {s.brackets
@@ -373,7 +374,10 @@ export function TaxPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Tax Brackets</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Tax Brackets</h1>
+          <PageHelp page="tax" />
+        </div>
         <button className="btn btn-primary" onClick={() => setShowJModal(true)}>+ Add Jurisdiction</button>
       </div>
 

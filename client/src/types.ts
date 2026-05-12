@@ -290,6 +290,7 @@ export interface RefiScenario {
   label: string;
   term_years: number;
   annual_rate: string;
+  origination_fee: string;
   sort_order: number;
   created_at: string;
 }
@@ -299,12 +300,13 @@ export interface RefiScenarioResult {
   label: string;
   termYears: number;
   annualRate: number;
+  originationFee: number;
   monthlyPayment: number;
   totalInterest: number;
   totalPaid: number;
   monthlyDelta: number;
   totalInterestDiff: number;
-  investmentGainAtTermEnd: number;
+  cashFlowGain: number;
   totalGainByChoosing: number;
 }
 

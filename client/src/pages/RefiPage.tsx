@@ -4,6 +4,7 @@ import {
   getAnalyses, createAnalysis, updateAnalysis, deleteAnalysis,
   getScenarios, createScenario, updateScenario, deleteScenario, getRefiResult,
 } from '../api/refi';
+import { PageHelp } from '../components/HelpDialog';
 import type { RefiAnalysis, RefiScenario } from '../types';
 
 function fmtMoney(v: number) {
@@ -102,15 +103,20 @@ function AnalysisModal({ existing, onClose, onSave }: {
 
 // ── Scenario modal ─────────────────────────────────────────────────────────────
 
-interface SForm { label: string; term_years: string; annual_rate: string; }
-const EMPTY_S: SForm = { label: '', term_years: '30', annual_rate: '' };
+interface SForm { label: string; term_years: string; annual_rate: string; origination_fee: string; }
+const EMPTY_S: SForm = { label: '', term_years: '30', annual_rate: '', origination_fee: '0' };
 
 function ScenarioModal({ analysisId, existing, onClose, onSave }: {
   analysisId: string; existing?: RefiScenario; onClose: () => void; onSave: () => void;
 }) {
   const [form, setForm] = useState<SForm>(
     existing
-      ? { label: existing.label, term_years: String(existing.term_years), annual_rate: (parseFloat(existing.annual_rate) * 100).toFixed(3) }
+      ? {
+          label: existing.label,
+          term_years: String(existing.term_years),
+          annual_rate: (parseFloat(existing.annual_rate) * 100).toFixed(3),
+          origination_fee: parseFloat(existing.origination_fee).toFixed(0),
+        }
       : EMPTY_S,
   );
   const [error, setError] = useState('');
@@ -120,7 +126,12 @@ function ScenarioModal({ analysisId, existing, onClose, onSave }: {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { label: form.label, term_years: parseInt(form.term_years), annual_rate: parseFloat(form.annual_rate) / 100 };
+      const payload = {
+        label: form.label,
+        term_years: parseInt(form.term_years),
+        annual_rate: parseFloat(form.annual_rate) / 100,
+        origination_fee: parseFloat(form.origination_fee) || 0,
+      };
       if (existing) await updateScenario(analysisId, existing.id, payload);
       else await createScenario(analysisId, payload);
       onSave();
@@ -138,8 +149,16 @@ function ScenarioModal({ analysisId, existing, onClose, onSave }: {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {error && <div className="field-error">{error}</div>}
           <label className="field">Label <input value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} required /></label>
-          <label className="field">Term (years) <input type="number" min="1" max="50" value={form.term_years} onChange={e => setForm(f => ({ ...f, term_years: e.target.value }))} required /></label>
-          <label className="field">Annual Rate (%) <input type="number" min="0" step="0.001" value={form.annual_rate} onChange={e => setForm(f => ({ ...f, annual_rate: e.target.value }))} required /></label>
+          <div className="form-grid">
+            <label className="field">Term (years) <input type="number" min="1" max="50" value={form.term_years} onChange={e => setForm(f => ({ ...f, term_years: e.target.value }))} required /></label>
+            <label className="field">Annual Rate (%) <input type="number" min="0" step="0.001" value={form.annual_rate} onChange={e => setForm(f => ({ ...f, annual_rate: e.target.value }))} required /></label>
+            <label className="field">Origination Fee ($)
+              <input type="number" min="0" step="1" value={form.origination_fee} onChange={e => setForm(f => ({ ...f, origination_fee: e.target.value }))} />
+            </label>
+          </div>
+          <p className="muted" style={{ fontSize: '0.74rem', margin: '-4px 0 0' }}>
+            Origination fee is a one-time closing cost deducted from the net gain calculation.
+          </p>
           <div className="dialog-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
@@ -217,9 +236,9 @@ function AnalysisDetail({ analysis }: { analysis: RefiAnalysis }) {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Label</th><th>Term</th><th>Rate</th>
-              <th>Payment/Mo</th><th>Delta/Mo</th><th>Total Interest</th>
-              <th>Interest Diff</th><th>Investment Gain</th><th>Net Gain</th><th></th>
+              <th>Label</th><th>Term</th><th className="num">Rate</th>
+              <th className="num">Payment/Mo</th><th className="num">Delta/Mo</th><th className="num">Total Interest</th>
+              <th className="num">Interest Diff</th><th className="num">Orig. Fee</th><th className="num">Net Gain</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -238,7 +257,7 @@ function AnalysisDetail({ analysis }: { analysis: RefiAnalysis }) {
                   <td className={`num ${r && r.totalInterestDiff < 0 ? 'green' : r && r.totalInterestDiff > 0 ? 'red' : ''}`}>
                     {r ? (r.totalInterestDiff > 0 ? '+' : '') + fmtMoney(r.totalInterestDiff) : '—'}
                   </td>
-                  <td className="num green">{r ? fmtMoney(r.investmentGainAtTermEnd) : '—'}</td>
+                  <td className="num">{r && r.originationFee > 0 ? <span className="red">−{fmtMoney(r.originationFee)}</span> : <span className="muted">—</span>}</td>
                   <td className={`num ${r && r.totalGainByChoosing > 0 ? 'green' : r && r.totalGainByChoosing < 0 ? 'red' : ''}`}>
                     {r ? (r.totalGainByChoosing > 0 ? '+' : '') + fmtMoney(r.totalGainByChoosing) : '—'}
                   </td>
@@ -297,7 +316,10 @@ export function RefiPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Refi Calculator</h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <h1>Refi Calculator</h1>
+          <PageHelp page="refi" />
+        </div>
         <button className="btn btn-primary" onClick={() => setAnalysisModal('new')}>+ New Analysis</button>
       </div>
 
@@ -309,7 +331,7 @@ export function RefiPage() {
             <div className="section-header"><h2>Analyses</h2></div>
             <table className="data-table">
               <thead>
-                <tr><th>Name</th><th>Balance</th><th>Current Rate</th><th>Months In</th><th></th></tr>
+                <tr><th>Name</th><th className="num">Balance</th><th className="num">Current Rate</th><th className="num">Months In</th><th></th></tr>
               </thead>
               <tbody>
                 {analyses.map(a => (
