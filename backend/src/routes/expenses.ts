@@ -6,8 +6,8 @@ import { query } from '../config/db';
 import {
   listExpenseSnapshots, findExpenseSnapshotById, createExpenseSnapshot,
   updateExpenseSnapshot, deleteExpenseSnapshot, cloneExpenseSnapshot,
-  listExpenseItems, createExpenseItem, updateExpenseItem, deleteExpenseItem,
-  itemMonthly,
+  listExpenseItems, findExpenseItemByIdForAccount, createExpenseItem,
+  updateExpenseItem, deleteExpenseItem, itemMonthly,
 } from '../models/expense';
 
 export const expensesRouter = Router();
@@ -119,6 +119,8 @@ expensesRouter.post('/snapshots/:id/items/bulk', async (req, res) => {
 });
 
 expensesRouter.put('/items/:itemId', async (req, res) => {
+  const existing = await findExpenseItemByIdForAccount(req.params.itemId, req.account!.id);
+  if (!existing) throw new NotFoundError('Item not found');
   const body = itemSchema.parse(req.body);
   const updated = await updateExpenseItem(
     req.params.itemId, body.name, body.owner ?? null, body.vertical ?? null,
@@ -129,6 +131,8 @@ expensesRouter.put('/items/:itemId', async (req, res) => {
 });
 
 expensesRouter.delete('/items/:itemId', async (req, res) => {
+  const existing = await findExpenseItemByIdForAccount(req.params.itemId, req.account!.id);
+  if (!existing) throw new NotFoundError('Item not found');
   await deleteExpenseItem(req.params.itemId);
   res.status(204).end();
 });

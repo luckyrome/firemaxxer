@@ -94,7 +94,7 @@ export async function cloneExpenseSnapshot(
 ): Promise<ExpenseSnapshot> {
   const { rows: [snap] } = await query<ExpenseSnapshot>(
     `INSERT INTO expense_snapshots (account_id, label, effective_date, is_retirement_plan)
-     SELECT $2, $3, $4, is_retirement_plan FROM expense_snapshots WHERE id = $1
+     SELECT $2, $3, $4, is_retirement_plan FROM expense_snapshots WHERE id = $1 AND account_id = $2
      RETURNING *`,
     [sourceId, accountId, label, effectiveDate],
   );
@@ -108,6 +108,16 @@ export async function cloneExpenseSnapshot(
 }
 
 // ── Items ─────────────────────────────────────────────────────────────────────
+
+export async function findExpenseItemByIdForAccount(itemId: string, accountId: string): Promise<ExpenseItem | null> {
+  const { rows } = await query<ExpenseItem>(
+    `SELECT ei.* FROM expense_items ei
+     JOIN expense_snapshots es ON es.id = ei.snapshot_id
+     WHERE ei.id = $1 AND es.account_id = $2`,
+    [itemId, accountId],
+  );
+  return rows[0] ?? null;
+}
 
 export async function listExpenseItems(snapshotId: string): Promise<ExpenseItem[]> {
   const { rows } = await query<ExpenseItem>(

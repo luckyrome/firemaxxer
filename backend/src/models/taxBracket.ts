@@ -166,6 +166,14 @@ export async function upsertBracketSet(
   return { ...set, brackets: saved };
 }
 
+export async function findBracketSetById(id: string): Promise<TaxBracketSet | null> {
+  const { rows } = await query<TaxBracketSet>(
+    'SELECT * FROM tax_bracket_sets WHERE id = $1',
+    [id],
+  );
+  return rows[0] ?? null;
+}
+
 export async function deleteBracketSet(id: string): Promise<void> {
   await query('DELETE FROM tax_bracket_sets WHERE id = $1', [id]);
 }

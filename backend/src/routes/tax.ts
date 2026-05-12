@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/requireAuth';
 import { ForbiddenError, NotFoundError } from '../middleware/errorHandler';
 import {
   listJurisdictions, findJurisdictionById, createJurisdiction, updateJurisdiction, deleteJurisdiction,
-  listBracketSetsForJurisdiction, upsertBracketSet, deleteBracketSet,
+  listBracketSetsForJurisdiction, findBracketSetById, upsertBracketSet, deleteBracketSet,
   getAccountTaxProfile, upsertAccountTaxProfile,
   type FilingStatus, type IncomeType, type JurisdictionType,
 } from '../models/taxBracket';
@@ -98,6 +98,9 @@ taxRouter.post('/jurisdictions/:id/bracket-sets', async (req, res) => {
 });
 
 taxRouter.delete('/bracket-sets/:id', async (req, res) => {
+  const set = await findBracketSetById(req.params.id);
+  if (!set) throw new NotFoundError('Bracket set not found');
+  if (set.created_by !== req.account!.id) throw new ForbiddenError('Cannot delete public or others\' bracket sets');
   await deleteBracketSet(req.params.id);
   res.status(204).end();
 });
